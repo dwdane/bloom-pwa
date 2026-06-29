@@ -127,6 +127,13 @@ const Store = (() => {
   }
 
   // Entries of one kind, sorted oldest-first by creation time (for charts).
+  // Sort key: the day an entry represents (back-dated entries sort correctly),
+  // breaking ties by when it was logged.
+  function sortKey(e) {
+    const dayMs = e.date ? Date.parse(e.date) : (e.createdAt || 0);
+    return dayMs * 1e7 + (e.createdAt || 0) % 1e7;
+  }
+
   async function entriesOfKind(kind) {
     const s = await store(ENTRIES, 'readonly');
     return new Promise((resolve, reject) => {
@@ -138,7 +145,7 @@ const Store = (() => {
           out.push(cursor.value);
           cursor.continue();
         } else {
-          out.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+          out.sort((a, b) => sortKey(a) - sortKey(b));
           resolve(out);
         }
       };

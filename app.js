@@ -79,6 +79,18 @@
   const toStoredBump = (v) => (state.imperial ? v * 2.54 : v);
   const fromStoredBump = (cm) => (state.imperial ? cm / 2.54 : cm);
 
+  // Height is stored canonically in cm. Imperial display is feet/inches.
+  function formatHeight(cm) {
+    if (cm == null) return null;
+    if (state.imperial) {
+      const totalIn = cm / 2.54;
+      const ft = Math.floor(totalIn / 12);
+      const inch = Math.round(totalIn - ft * 12);
+      return `${ft}\u2032${inch}\u2033`;
+    }
+    return Math.round(cm) + ' cm';
+  }
+
   function currentWeek() {
     const age = ageAt(state.dating);
     return age ? age.weeks : WEEK_MIN;
@@ -141,6 +153,11 @@
     if (e.createdAt) return isoDate(new Date(e.createdAt));
     return todayISO();
   }
+  // Millisecond timestamp of the day an entry represents (for time-axis charts).
+  function entryDateMs(e) {
+    if (e.date) return new Date(e.date + 'T00:00:00').getTime();
+    return e.createdAt || Date.now();
+  }
 
   function numberDialog({ title, unit, placeholder }) {
     return new Promise((resolve) => {
@@ -183,6 +200,62 @@
       });
       root.appendChild(overlay);
       input.focus();
+    });
+  }
+
+  // Height entry: feet+inches for imperial, single cm field for metric.
+  // Resolves to centimeters (or null on cancel).
+  function heightDialog(currentCm) {
+    return new Promise((resolve) => {
+      const overlay = el('div', { class: 'modal-overlay' });
+      function close(cm) {
+        overlay.remove();
+        resolve(cm);
+      }
+      let inputs;
+      if (state.imperial) {
+        const totalIn = currentCm != null ? currentCm / 2.54 : null;
+        const ftVal = totalIn != null ? Math.floor(totalIn / 12) : '';
+        const inVal = totalIn != null ? Math.round(totalIn - Math.floor(totalIn / 12) * 12) : '';
+        const ft = el('input', { type: 'number', inputmode: 'numeric', step: '1', placeholder: 'ft', value: ftVal === '' ? null : String(ftVal) });
+        const inch = el('input', { type: 'number', inputmode: 'numeric', step: '1', placeholder: 'in', value: inVal === '' ? null : String(inVal) });
+        inputs = { ft, inch };
+        var rows = el('div', { class: 'modal-input-row' }, [
+          ft, el('span', { class: 'modal-unit', text: 'ft' }),
+          inch, el('span', { class: 'modal-unit', text: 'in' }),
+        ]);
+      } else {
+        const cm = el('input', { type: 'number', inputmode: 'numeric', step: '1', placeholder: 'cm', value: currentCm != null ? String(Math.round(currentCm)) : null });
+        inputs = { cm };
+        var rows = el('div', { class: 'modal-input-row' }, [cm, el('span', { class: 'modal-unit', text: 'cm' })]);
+      }
+      const dialog = el('div', { class: 'modal' }, [
+        el('h3', { text: 'Your height' }),
+        rows,
+        el('div', { class: 'modal-actions' }, [
+          el('button', { class: 'secondary', text: 'Cancel', onClick: () => close(null) }),
+          el('button', {
+            class: 'primary compact',
+            text: 'Save',
+            onClick: () => {
+              if (state.imperial) {
+                const f = parseFloat(inputs.ft.value) || 0;
+                const i = parseFloat(inputs.inch.value) || 0;
+                const cm = (f * 12 + i) * 2.54;
+                close(cm > 0 ? cm : null);
+              } else {
+                const cm = parseFloat(inputs.cm.value);
+                close(Number.isFinite(cm) && cm > 0 ? cm : null);
+              }
+            },
+          }),
+        ]),
+      ]);
+      overlay.appendChild(dialog);
+      overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) close(null);
+      });
+      root.appendChild(overlay);
     });
   }
 
@@ -836,22 +909,129 @@
       const note = el('p', { class: 'muted small' });
       card.appendChild(latestEl);
       card.appendChild(note);
+
+      // Optional stat strip (start / current / change) + height — weight only
+      const statStrip = opts.showStats ? el('div', { class: 'measure-stats' }) : null;
+      const heightRow = opts.showStats ? el('div', { class: 'height-row' }) : null;
+      if (statStrip) card.appendChild(statStrip);
+      if (heightRow) card.appendChild(heightRow);
+
       if (opts.help) card.appendChild(opts.help());
+
+      // Optional history table (date / week / value / change)
+      const tableHolder = opts.showTable ? el('div', { class: 'measure-table-holder' }) : null;
+      if (tableHolder) card.appendChild(tableHolder);
+
       card.appendChild(trendDisclosure(opts));
 
-      Store.entriesOfKind(opts.kind).then((entries) => {
+      function renderHeight(heightCm) {
+        if (!heightRow) return;
+        heightRow.innerHTML = '';
+        const h = formatHeight(heightCm);
+        heightRow.appendChild(el('span', { class: 'muted small', text: 'Height' }));
+        heightRow.appendChild(el('span', { class: 'height-val', text: h || 'Not set' }));
+        heightRow.appendChild(
+          el('button', {
+            class: 'link-btn small',
+            text: h ? 'Edit' : 'Add',
+            onClick: async () => {
+              const cm = await heightDialog(heightCm);
+              if (cm == null) return;
+              await Store.setSetting('height', cm);
+              renderHeight(cm);
+            },
+          })
+        );
+        // pre-pregnancy / starting weight (optional; defaults to first logged)
+        heightRow.appendChild(el('span', { class: 'muted small height-sep', text: 'Start weight' }));
+        heightRow.appendChild(
+          el('button', {
+            class: 'link-btn small',
+            text: 'Set',
+            onClick: async () => {
+              const entered = await numberDialog({ title: 'Starting weight', unit: opts.unit() });
+              if (entered == null) return;
+              await Store.setSetting('startWeight', opts.toStored(entered));
+              renderApp();
+            },
+          })
+        );
+      }
+
+      Promise.all([
+        Store.entriesOfKind(opts.kind),
+        opts.showStats ? Store.getSetting('startWeight') : Promise.resolve(null),
+        opts.showStats ? Store.getSetting('height') : Promise.resolve(null),
+      ]).then(([entries, startW, heightCm]) => {
         if (entries.length === 0) {
           latestEl.textContent = 'Not logged yet';
           note.textContent = opts.emptyHint;
+          if (statStrip) statStrip.style.display = 'none';
+          renderHeight(heightCm);
+          if (tableHolder) tableHolder.innerHTML = '';
           return;
         }
         const last = entries[entries.length - 1];
-        latestEl.textContent =
-          opts.fromStored(last.value).toFixed(1) + ' ' + opts.unit();
-        note.textContent =
-          entries.length < 2
-            ? 'Log once more to start a trend.'
-            : opts.encourage;
+        const first = entries[0];
+        latestEl.textContent = opts.fromStored(last.value).toFixed(1) + ' ' + opts.unit();
+        note.textContent = entries.length < 2 ? 'Log once more to start a trend.' : opts.encourage;
+
+        // stat strip
+        if (statStrip) {
+          const startStored = startW != null ? startW : first.value;
+          const startDisp = opts.fromStored(startStored);
+          const currentDisp = opts.fromStored(last.value);
+          const change = currentDisp - startDisp;
+          const sign = change >= 0 ? '+' : '';
+          statStrip.style.display = 'flex';
+          statStrip.innerHTML = '';
+          const stat = (val, key) => el('div', {}, [
+            el('div', { class: 'ms-val', text: val }),
+            el('div', { class: 'ms-key muted small', text: key }),
+          ]);
+          statStrip.appendChild(stat(startDisp.toFixed(1) + ' ' + opts.unit(), startW != null ? 'Start' : 'First logged'));
+          statStrip.appendChild(stat(currentDisp.toFixed(1) + ' ' + opts.unit(), 'Current'));
+          statStrip.appendChild(stat(sign + change.toFixed(1), 'Change'));
+        }
+        renderHeight(heightCm);
+
+        // table
+        if (tableHolder) {
+          tableHolder.innerHTML = '';
+          const table = el('table', { class: 'data-table' });
+          table.appendChild(
+            el('thead', {}, [
+              el('tr', {}, [
+                el('th', { text: 'Date' }),
+                el('th', { text: 'Week' }),
+                el('th', { text: opts.title === 'Weight' ? 'Weight' : 'Size' }),
+                el('th', { text: 'Change' }),
+              ]),
+            ])
+          );
+          const tbody = el('tbody', {});
+          // entries are sorted ascending by represented date; change = vs previous
+          const rows = entries.map((e, i) => {
+            const prev = entries[i - 1];
+            const disp = opts.fromStored(e.value);
+            const delta = prev != null ? disp - opts.fromStored(prev.value) : null;
+            const dateStr = new Date(entryDateMs(e)).toLocaleDateString([], { month: 'short', day: 'numeric' });
+            return { e, disp, delta, dateStr };
+          });
+          rows.reverse().forEach(({ e, disp, delta, dateStr }) => {
+            const sign = delta == null ? '' : delta >= 0 ? '+' : '';
+            tbody.appendChild(
+              el('tr', {}, [
+                el('td', { text: dateStr }),
+                el('td', { text: e.week != null ? String(e.week) : '\u2014' }),
+                el('td', { text: disp.toFixed(1) + ' ' + opts.unit() }),
+                el('td', { class: 'td-change', text: delta == null ? '\u2014' : sign + delta.toFixed(1) }),
+              ])
+            );
+          });
+          table.appendChild(tbody);
+          tableHolder.appendChild(table);
+        }
       });
 
       return card;
@@ -900,6 +1080,8 @@
         fromStored: fromStoredWeight,
         emptyHint: 'Tap Add to record your first measurement.',
         encourage: 'Every pound is your body doing its job beautifully.',
+        showStats: true,
+        showTable: true,
       })
     );
     sectBump.appendChild(
@@ -913,6 +1095,7 @@
         emptyHint: 'Tap Add to record your first measurement.',
         encourage: 'Look how much room your little one is making.',
         help: bumpHelp,
+        showTable: true,
       })
     );
 
@@ -1093,7 +1276,7 @@
         const sign = change >= 0 ? '+' : '';
         note.textContent = `${sign}${change.toFixed(1)} ${opts.unit()} since you started logging.`;
         const points = entries.map((e) => ({
-          x: e.createdAt,
+          x: entryDateMs(e),
           y: opts.fromStored(e.value),
           label: e.week != null ? `wk ${e.week}` : '',
         }));
@@ -1273,20 +1456,39 @@
     ]);
     wrap.appendChild(timerCard);
 
-    const statsCard = el('div', { class: 'card' }, [
-      el('h3', { class: 'card-title', text: 'Recent contractions' }),
+    // Big-picture summary (frequency / duration / 5-1-1 readiness)
+    const summaryCard = el('div', { class: 'card contraction-summary' });
+    wrap.appendChild(summaryCard);
+
+    // Visual timeline: contraction vs rest
+    const timelineCard = el('div', { class: 'card', style: 'display:none' }, [
+      el('h3', { class: 'card-title', text: 'Timeline' }),
     ]);
-    const statsSummary = el('div', { class: 'timer-summary' });
-    const listEl = el('div', { class: 'entry-list' });
-    statsCard.appendChild(statsSummary);
-    statsCard.appendChild(listEl);
+    const timelineCanvas = el('canvas', { class: 'contraction-canvas' });
+    timelineCard.appendChild(timelineCanvas);
+    timelineCard.appendChild(
+      el('div', { class: 'timeline-legend muted small' }, [
+        el('span', { class: 'legend-swatch contraction' }),
+        document.createTextNode(' contraction  '),
+        el('span', { class: 'legend-swatch rest' }),
+        document.createTextNode(' rest'),
+      ])
+    );
+    wrap.appendChild(timelineCard);
+
+    // Detailed table
+    const statsCard = el('div', { class: 'card' }, [
+      el('h3', { class: 'card-title', text: 'Each contraction' }),
+    ]);
+    const tableWrap = el('div', {});
+    statsCard.appendChild(tableWrap);
     wrap.appendChild(statsCard);
 
     // Guidance
     wrap.appendChild(
       el('div', { class: 'card guidance' }, [
         el('h3', { class: 'card-title', text: 'How to use this' }),
-        el('p', { text: 'Tap Start when a contraction begins and Stop when it eases. Bloom records how long each one lasts and how far apart they are (start to start).' }),
+        el('p', { text: 'Tap Start when a contraction begins and Stop when it eases. Bloom records how long each one lasts (length) and how far apart they are, start to start (frequency).' }),
         el('p', { html: 'A common full-term guideline is <strong>5-1-1</strong>: contractions about 5 minutes apart, each lasting about 1 minute, for at least 1 hour. Your provider may give you different instructions \u2014 always follow theirs.' }),
         el('div', { class: 'callout callout-warn' }, [
           el('strong', { text: 'Call your provider ' }),
@@ -1297,11 +1499,19 @@
       ])
     );
 
+    function fmtMMSS(sec) {
+      if (sec == null) return '\u2014';
+      const m = Math.floor(sec / 60);
+      const s = Math.round(sec % 60);
+      return `${m}:${String(s).padStart(2, '0')}`;
+    }
+
     function render() {
       Store.entriesOfKind('contraction').then((all) => {
         const sorted = all.slice().sort((a, b) => (b.startedAt || 0) - (a.startedAt || 0));
 
-        // summary over the last hour
+        // ----- summary over the last hour -----
+        summaryCard.innerHTML = '';
         const hourAgo = Date.now() - 3600000;
         const recent = sorted.filter((c) => (c.startedAt || 0) >= hourAgo);
         if (recent.length >= 2) {
@@ -1312,42 +1522,89 @@
             gaps.push((recent[i].startedAt - recent[i + 1].startedAt) / 1000);
           }
           const avgGap = gaps.reduce((a, b) => a + b, 0) / gaps.length;
-          statsSummary.textContent = `Last hour: ${recent.length} contractions, about ${fmtClock(avgGap)} apart, lasting ~${fmtClock(avgDur)}.`;
-        } else {
-          statsSummary.textContent = 'Time a few contractions to see your pattern.';
-        }
 
-        // list with frequency
-        listEl.innerHTML = '';
-        if (sorted.length === 0) {
-          listEl.appendChild(el('p', { class: 'muted small', text: 'No contractions recorded yet.' }));
-        } else {
-          sorted.slice(0, 12).forEach((c, i) => {
-            const next = sorted[i + 1];
-            const gap = next ? (c.startedAt - next.startedAt) / 1000 : null;
-            const time = new Date(c.startedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-            const parts = [`${fmtClock(c.durationSec)} long`];
-            if (gap != null) parts.push(`${fmtClock(gap)} apart`);
-            listEl.appendChild(
-              el('div', { class: 'entry-row' }, [
-                el('span', { class: 'entry-label', text: `${time} \u00b7 ${parts.join(' \u00b7 ')}` }),
-              ])
-            );
-          });
-        }
-
-        if (sorted.length > 0) {
-          listEl.appendChild(
-            el('button', {
-              class: 'secondary compact clear-btn',
-              text: 'Clear all',
-              onClick: async () => {
-                for (const c of all) await Store.deleteEntry(c.id);
-                render();
-              },
+          summaryCard.appendChild(el('h3', { class: 'card-title', text: 'Right now (last hour)' }));
+          summaryCard.appendChild(
+            el('div', { class: 'summary-grid' }, [
+              el('div', {}, [el('div', { class: 'sg-val', text: fmtMMSS(avgGap) }), el('div', { class: 'sg-key muted small', text: 'apart (avg)' })]),
+              el('div', {}, [el('div', { class: 'sg-val', text: fmtMMSS(avgDur) }), el('div', { class: 'sg-key muted small', text: 'long (avg)' })]),
+              el('div', {}, [el('div', { class: 'sg-val', text: String(recent.length) }), el('div', { class: 'sg-key muted small', text: 'in last hour' })]),
+            ])
+          );
+          // 5-1-1 readout
+          const near511 = avgGap <= 330 && avgDur >= 45;
+          summaryCard.appendChild(
+            el('p', {
+              class: near511 ? 'small contraction-flag' : 'muted small',
+              text: near511
+                ? 'These are close to the 5-1-1 pattern. If you haven\u2019t already, this is a good time to check in with your provider.'
+                : 'Keep timing \u2014 the pattern will become clearer as you log more.',
             })
           );
+        } else {
+          summaryCard.appendChild(el('h3', { class: 'card-title', text: 'Right now' }));
+          summaryCard.appendChild(el('p', { class: 'muted small', text: 'Time a couple of contractions and your pattern \u2014 how far apart and how long \u2014 will show here.' }));
         }
+
+        // ----- timeline -----
+        if (sorted.length >= 1) {
+          timelineCard.style.display = 'block';
+          requestAnimationFrame(() =>
+            drawContractionTimeline(timelineCanvas, all, {
+              accent: accentColor(),
+              textColor: getCssColor('--muted', '#9a8aa0'),
+            })
+          );
+        } else {
+          timelineCard.style.display = 'none';
+        }
+
+        // ----- table: start | stop | length | frequency -----
+        tableWrap.innerHTML = '';
+        if (sorted.length === 0) {
+          tableWrap.appendChild(el('p', { class: 'muted small', text: 'No contractions recorded yet.' }));
+          return;
+        }
+        const table = el('table', { class: 'data-table' });
+        table.appendChild(
+          el('thead', {}, [
+            el('tr', {}, [
+              el('th', { text: 'Start' }),
+              el('th', { text: 'Stop' }),
+              el('th', { text: 'Length' }),
+              el('th', { text: 'Freq.' }),
+            ]),
+          ])
+        );
+        const tbody = el('tbody', {});
+        sorted.slice(0, 20).forEach((c, i) => {
+          const next = sorted[i + 1];
+          const gap = next ? (c.startedAt - next.startedAt) / 1000 : null;
+          const startT = new Date(c.startedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+          const stopT = c.endedAt ? new Date(c.endedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '\u2014';
+          tbody.appendChild(
+            el('tr', {}, [
+              el('td', { text: startT }),
+              el('td', { text: stopT }),
+              el('td', { text: fmtMMSS(c.durationSec) }),
+              el('td', { text: gap != null ? fmtMMSS(gap) : '\u2014' }),
+            ])
+          );
+        });
+        table.appendChild(tbody);
+        tableWrap.appendChild(table);
+
+        tableWrap.appendChild(
+          el('button', {
+            class: 'secondary compact clear-btn',
+            text: 'Clear all',
+            onClick: async () => {
+              if (!confirm('Clear all recorded contractions?')) return;
+              for (const c of all) await Store.deleteEntry(c.id);
+              render();
+            },
+          })
+        );
       });
     }
 
@@ -1377,6 +1634,7 @@
           endedAt,
           durationSec: Math.round((endedAt - startedAt) / 1000),
           week: currentWeek(),
+          date: todayISO(),
         });
         paintButton();
         render();
@@ -1410,13 +1668,20 @@
     container.appendChild(wrap);
 
     const TARGET = 10;
+
+    // Most recent session, shown the moment you open the tool
+    const lastCard = el('div', { class: 'card kick-last', style: 'display:none' });
+    wrap.appendChild(lastCard);
+
     const countLabel = el('div', { class: 'timer-elapsed kick-count' });
+    const footprintsRow = el('div', { class: 'footprints' });
     const elapsedLabel = el('div', { class: 'muted small' });
     const bigButton = el('button', { class: 'timer-button' });
     const resetBtn = el('button', { class: 'secondary compact', text: 'Reset session' });
 
     const card = el('div', { class: 'card timer-card' }, [
       countLabel,
+      footprintsRow,
       elapsedLabel,
       bigButton,
       resetBtn,
@@ -1448,18 +1713,43 @@
     historyCard.appendChild(historyList);
     wrap.appendChild(historyCard);
 
+    function renderLast() {
+      Store.entriesOfKind('kickSession').then((all) => {
+        if (all.length === 0) {
+          lastCard.style.display = 'none';
+          return;
+        }
+        const last = all.slice().sort((a, b) => (b.completedAt || 0) - (a.completedAt || 0))[0];
+        const d = new Date(last.completedAt);
+        const dateStr = d.toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' });
+        const timeStr = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+        lastCard.style.display = 'block';
+        lastCard.innerHTML = '';
+        lastCard.appendChild(el('h3', { class: 'card-title', text: 'Last session' }));
+        lastCard.appendChild(
+          el('div', { class: 'kick-last-grid' }, [
+            el('div', {}, [el('div', { class: 'kl-val', text: dateStr }), el('div', { class: 'kl-key muted small', text: 'Date' })]),
+            el('div', {}, [el('div', { class: 'kl-val', text: timeStr }), el('div', { class: 'kl-key muted small', text: 'Time' })]),
+            el('div', {}, [el('div', { class: 'kl-val', text: fmtClock(last.durationSec) }), el('div', { class: 'kl-key muted small', text: 'Length' })]),
+            el('div', {}, [el('div', { class: 'kl-val', text: String(last.count) }), el('div', { class: 'kl-key muted small', text: 'Movements' })]),
+          ])
+        );
+      });
+    }
+
     function renderHistory() {
       Store.entriesOfKind('kickSession').then((all) => {
         const sorted = all.slice().sort((a, b) => (b.completedAt || 0) - (a.completedAt || 0));
         historyList.innerHTML = '';
         if (sorted.length === 0) {
-          historyList.appendChild(el('p', { class: 'muted small', text: 'No sessions yet.' }));
+          historyList.appendChild(el('p', { class: 'muted small', text: 'No sessions yet \u2014 your first one will appear here.' }));
           return;
         }
         sorted.slice(0, 10).forEach((s) => {
           const when = new Date(s.completedAt).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
           historyList.appendChild(
             el('div', { class: 'entry-row' }, [
+              el('span', { class: 'entry-emoji', text: '\ud83d\udc63' }),
               el('span', { class: 'entry-label', text: `${when} \u00b7 ${s.count} movements in ${fmtClock(s.durationSec)}` }),
               el('button', {
                 class: 'entry-delete',
@@ -1467,6 +1757,7 @@
                 text: '\u00d7',
                 onClick: async () => {
                   await Store.deleteEntry(s.id);
+                  renderLast();
                   renderHistory();
                 },
               }),
@@ -1476,16 +1767,24 @@
       });
     }
 
+    function paintFootprints(n) {
+      footprintsRow.innerHTML = '';
+      for (let i = 0; i < TARGET; i++) {
+        footprintsRow.appendChild(
+          el('span', { class: 'footprint' + (i < n ? ' on' : ''), text: '\ud83d\udc63' })
+        );
+      }
+    }
+
     function paint() {
       const n = kickSession ? kickSession.times.length : 0;
       countLabel.textContent = `${n} / ${TARGET}`;
+      paintFootprints(n);
       bigButton.textContent = kickSession ? 'I felt a movement' : 'Start counting';
       bigButton.classList.toggle('running', !!kickSession);
-      if (kickSession) {
-        elapsedLabel.textContent = fmtClock((Date.now() - kickSession.startedAt) / 1000) + ' elapsed';
-      } else {
-        elapsedLabel.textContent = '';
-      }
+      elapsedLabel.textContent = kickSession
+        ? fmtClock((Date.now() - kickSession.startedAt) / 1000) + ' elapsed'
+        : '';
     }
 
     bigButton.addEventListener('click', async () => {
@@ -1496,7 +1795,14 @@
         return;
       }
       kickSession.times.push(Date.now());
-      if (kickSession.times.length >= TARGET) {
+      const n = kickSession.times.length;
+
+      // mid-session delight when baby is especially active
+      if (n === 5 && Date.now() - kickSession.startedAt < 120000) {
+        toast('Wow, lots of movement! \ud83c\udf1f');
+      }
+
+      if (n >= TARGET) {
         const startedAt = kickSession.startedAt;
         const completedAt = Date.now();
         const durationSec = Math.round((completedAt - startedAt) / 1000);
@@ -1507,14 +1813,29 @@
           count: TARGET,
           durationSec,
           week: currentWeek(),
+          date: todayISO(),
         });
         kickSession = null;
+
+        // tiered, encouraging result — easter egg when movement is brisk
+        const fast = durationSec <= 300;
+        const lively = durationSec <= 600;
         resultCard.style.display = 'block';
         resultCard.innerHTML = '';
-        resultCard.appendChild(el('div', { class: 'summary-emoji', text: '\ud83d\udc63' }));
-        resultCard.appendChild(el('p', { class: 'summary-line', text: `You felt ${TARGET} movements in ${fmtClock(durationSec)}.` }));
-        resultCard.appendChild(el('p', { class: 'muted small', text: 'A lovely sign. Keep noticing your baby\u2019s usual pattern, and reach out to your provider any time movements drop or you\u2019re unsure.' }));
+        resultCard.appendChild(el('div', { class: 'summary-emoji', text: fast ? '\ud83d\udd7a' : '\ud83d\udc63' }));
+        if (fast) {
+          resultCard.appendChild(el('p', { class: 'summary-line', text: `${babyLabel()} is moving and grooving!` }));
+          resultCard.appendChild(el('p', { class: 'muted small', text: `${TARGET} movements in just ${fmtClock(durationSec)} \u2014 someone\u2019s having a party in there.` }));
+          footprintCelebration();
+        } else if (lively) {
+          resultCard.appendChild(el('p', { class: 'summary-line', text: 'Lots of lovely movement!' }));
+          resultCard.appendChild(el('p', { class: 'muted small', text: `${TARGET} movements in ${fmtClock(durationSec)}. A reassuring sign.` }));
+        } else {
+          resultCard.appendChild(el('p', { class: 'summary-line', text: `You felt ${TARGET} movements in ${fmtClock(durationSec)}.` }));
+          resultCard.appendChild(el('p', { class: 'muted small', text: 'A lovely sign. Keep noticing your baby\u2019s usual pattern, and reach out to your provider any time movements drop or you\u2019re unsure.' }));
+        }
         paint();
+        renderLast();
         renderHistory();
       } else {
         paint();
@@ -1536,7 +1857,24 @@
     );
 
     paint();
+    renderLast();
     renderHistory();
+  }
+
+  // A brief shower of footprints for a lively kick session.
+  function footprintCelebration() {
+    const layer = el('div', { class: 'celebrate-layer' });
+    for (let i = 0; i < 16; i++) {
+      const drop = el('div', { class: 'celebrate-drop', text: '\ud83d\udc63' });
+      drop.style.left = Math.random() * 100 + '%';
+      drop.style.animationDelay = Math.random() * 0.5 + 's';
+      drop.style.animationDuration = 1.5 + Math.random() * 1.1 + 's';
+      drop.style.fontSize = 1.2 + Math.random() * 1.4 + 'rem';
+      layer.appendChild(drop);
+    }
+    document.body.appendChild(layer);
+    setTimeout(() => layer.classList.add('fade'), 1900);
+    setTimeout(() => layer.remove(), 2600);
   }
 
   // ---------------------------------------------------------------------------

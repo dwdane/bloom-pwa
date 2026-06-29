@@ -174,3 +174,74 @@ function hexToRgba(hex, alpha) {
   const b = parseInt(h.substring(4, 6), 16);
   return `rgba(${r},${g},${b},${alpha})`;
 }
+
+// drawContractionTimeline(canvas, events, opts)
+// Renders a horizontal labor timeline: each contraction is a solid colored block
+// and the rests between them are light gaps, so the rhythm is visible at a glance.
+// events: array of { startedAt, endedAt } in ms, any order. Shows the most recent
+// window (default last 60 min, or all events if they span less).
+function drawContractionTimeline(canvas, events, opts = {}) {
+  const accent = opts.accent || '#b5739d';
+  const restColor = opts.restColor || 'rgba(181,115,157,0.14)';
+  const textColor = opts.textColor || '#9a8aa0';
+  const dpr = window.devicePixelRatio || 1;
+  const cssW = canvas.clientWidth || 320;
+  const cssH = canvas.clientHeight || 84;
+  canvas.width = cssW * dpr;
+  canvas.height = cssH * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  ctx.clearRect(0, 0, cssW, cssH);
+
+  const valid = (events || [])
+    .filter((e) => e.startedAt && e.endedAt)
+    .sort((a, b) => a.startedAt - b.startedAt);
+  if (valid.length === 0) return;
+
+  const now = Date.now();
+  const windowMs = opts.windowMs || 3600000;
+  const earliest = Math.min(valid[0].startedAt, now - windowMs);
+  const start = Math.max(earliest, valid[0].startedAt - 60000);
+  const end = now;
+  const span = Math.max(end - start, 60000);
+
+  const padX = 8;
+  const trackW = cssW - padX * 2;
+  const trackY = 14;
+  const trackH = cssH - 38;
+  const xOf = (t) => padX + ((t - start) / span) * trackW;
+
+  // rest baseline
+  ctx.fillStyle = restColor;
+  roundRectPath(ctx, padX, trackY, trackW, trackH, 8);
+  ctx.fill();
+
+  // contraction blocks
+  ctx.fillStyle = accent;
+  for (const e of valid) {
+    const x0 = xOf(e.startedAt);
+    const x1 = Math.max(xOf(e.endedAt), x0 + 2);
+    roundRectPath(ctx, x0, trackY, x1 - x0, trackH, 3);
+    ctx.fill();
+  }
+
+  // time ticks (start and now)
+  ctx.fillStyle = textColor;
+  ctx.font = '11px -apple-system, system-ui, sans-serif';
+  ctx.textAlign = 'left';
+  ctx.fillText(new Date(start).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }), padX, cssH - 8);
+  ctx.textAlign = 'right';
+  ctx.fillText('now', cssW - padX, cssH - 8);
+  ctx.textAlign = 'left';
+}
+
+function roundRectPath(ctx, x, y, w, h, r) {
+  const rr = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + rr, y);
+  ctx.arcTo(x + w, y, x + w, y + h, rr);
+  ctx.arcTo(x + w, y + h, x, y + h, rr);
+  ctx.arcTo(x, y + h, x, y, rr);
+  ctx.arcTo(x, y, x + w, y, rr);
+  ctx.closePath();
+}

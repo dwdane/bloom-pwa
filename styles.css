@@ -399,3 +399,181 @@ button { font-family: inherit; }
   pointer-events: none;
 }
 .toast.show { opacity: 0.95; transform: translateX(-50%) translateY(0); }
+
+/* Week summary (log tab) */
+.week-summary {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: var(--accent-soft);
+  border: none;
+}
+.summary-emoji { font-size: 2rem; }
+.summary-line { font-weight: 600; color: var(--accent-ink); }
+.summary-sub { margin-top: 2px; }
+
+/* Feeling/symptom chips */
+.chip-group-title {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--muted);
+  margin: 14px 0 8px;
+}
+.chip-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.log-chip {
+  border: none;
+  border-radius: 999px;
+  padding: 9px 14px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.tone-good { background: #ddeedd; color: #1e5128; }
+.tone-neutral { background: var(--accent-soft); color: var(--accent-ink); }
+.tone-tough { background: #f7e6d9; color: #7a4a2a; }
+@media (prefers-color-scheme: dark) {
+  .tone-good { background: #1f3322; color: #9fd6a6; }
+  .tone-tough { background: #36301f; color: #e0c98a; }
+}
+
+/* Entry list (deletable) */
+.entry-list { display: flex; flex-direction: column; }
+.entry-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--line);
+}
+.entry-row:last-child { border-bottom: none; }
+.entry-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex: none;
+}
+.entry-dot.tone-good { background: var(--good); }
+.entry-dot.tone-neutral { background: #b0b6bc; }
+.entry-dot.tone-tough { background: #d9a066; }
+.entry-label { flex: 1; }
+.entry-delete {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 1.3rem;
+  line-height: 1;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.entry-delete:active { background: var(--accent-soft); }
+
+/* Setup acknowledgment */
+.ack-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  margin: 16px 0 4px;
+  cursor: pointer;
+}
+.ack-row input { margin-top: 3px; flex: none; width: 18px; height: 18px; }
+.ack-row a, .setup a, .link-row { color: var(--accent); }
+
+/* Settings link list */
+.link-list { margin-top: 10px; }
+.link-row {
+  display: block;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+  text-decoration: none;
+  color: var(--accent);
+  font-weight: 600;
+}
+.link-row:last-child { border-bottom: none; }
+
+/* Legal pages */
+.legal { padding-bottom: 48px; }
+.legal h1 { font-size: 1.5rem; margin: 6px 0 4px; }
+.legal h2 { font-size: 1.05rem; margin: 22px 0 6px; }
+.legal p, .legal li { color: var(--ink); }
+.legal ul { padding-left: 20px; }
+.legal li { margin: 6px 0; }
+.legal a { color: var(--accent); }
+.back-link {
+  text-decoration: none;
+  color: var(--accent);
+  font-weight: 600;
+}
+.callout {
+  background: var(--accent-soft);
+  border-left: 4px solid var(--accent);
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin: 16px 0;
+  color: var(--accent-ink);
+  font-size: 0.92rem;
+}
+.footer-note { margin-top: 28px; }
+
+/* Callout variants on the setup screen */
+.callout-privacy {
+  border-left-color: var(--good);
+  background: var(--accent-soft);
+}
+.callout-warn {
+  border-left-color: #d9a066;
+}
+.callout strong { color: inherit; }
+
+/* Tighter nav for five tabs */
+.nav-item { padding: 8px 2px 6px; }
+.nav-label { font-size: 0.66rem; }
+
+/* Taller charts in Trends */
+.chart-canvas.tall { height: 200px; }
+
+/* Chart legend */
+.chart-legend {
+  display: flex;
+  gap: 16px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+.legend-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  display: inline-block;
+}
+.legend-dot.tone-good { background: var(--good); }
+.legend-dot.tone-neutral { background: #b0b6bc; }
+.legend-dot.tone-tough { background: #d9a066; }
+
+/* Bump measurement help disclosure */
+.measure-help-wrap { margin-top: 12px; border-top: 1px solid var(--line); }
+.measure-help-toggle {
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  color: var(--accent);
+  font-weight: 600;
+  font-size: 0.88rem;
+  padding: 12px 0 4px;
+  cursor: pointer;
+}
+.measure-help { padding: 4px 0 0; }
+.measure-help ul { padding-left: 18px; margin: 8px 0; }
+.measure-help li { margin: 6px 0; }

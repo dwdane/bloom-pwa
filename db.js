@@ -78,6 +78,13 @@ const Store = (() => {
     return done(tx);
   }
 
+  async function deleteEntry(id) {
+    const db = await open();
+    const tx = db.transaction(ENTRIES, 'readwrite');
+    tx.objectStore(ENTRIES).delete(id);
+    return done(tx);
+  }
+
   async function entriesForWeek(week) {
     const s = await store(ENTRIES, 'readonly');
     return new Promise((resolve, reject) => {
@@ -129,6 +136,7 @@ const Store = (() => {
     getSetting,
     setSetting,
     addEntry,
+    deleteEntry,
     entriesForWeek,
     allEntries,
     entriesOfKind,

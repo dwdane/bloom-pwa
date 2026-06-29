@@ -143,12 +143,14 @@
     const content = el('div', { class: 'content' });
     if (state.view === 'week') renderWeekView(content);
     else if (state.view === 'log') renderLogView(content);
+    else if (state.view === 'trends') renderTrendsView(content);
     else if (state.view === 'food') renderFoodView(content);
     else if (state.view === 'settings') renderSettingsView(content);
 
     const nav = el('nav', { class: 'tabbar' }, [
       navItem('week', 'Week', '<rect x="3" y="4" width="18" height="18" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="16" y1="2" x2="16" y2="6"/>'),
       navItem('log', 'Log', '<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>'),
+      navItem('trends', 'Trends', '<line x1="3" y1="21" x2="21" y2="21"/><polyline points="4 15 9 9 13 13 20 5"/>'),
       navItem('food', 'Food', '<path d="M3 2v7a3 3 0 0 0 6 0V2"/><line x1="6" y1="9" x2="6" y2="22"/><path d="M17 2c-1.5 1-2 3-2 5s.5 4 2 5v10"/>'),
       navItem('settings', 'Settings', '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 8 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H2a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 3.6 8a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H8a1.65 1.65 0 0 0 1-1.51V2a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V8a1.65 1.65 0 0 0 1.51 1H22a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/>'),
     ]);
@@ -169,7 +171,19 @@
     const dueInput = el('input', { type: 'date' });
     const error = el('p', { class: 'error' });
 
+    const ackBox = el('input', { type: 'checkbox', id: 'ack' });
+    const startBtn = el('button', {
+      class: 'primary',
+      text: 'Start',
+      disabled: '',
+    });
+    ackBox.addEventListener('change', () => {
+      if (ackBox.checked) startBtn.removeAttribute('disabled');
+      else startBtn.setAttribute('disabled', '');
+    });
+
     async function save() {
+      if (!ackBox.checked) return;
       const lmp = parseDateInput(lmpInput.value);
       const due = parseDateInput(dueInput.value);
       if (!lmp && !due) {
@@ -182,12 +196,41 @@
         lmp: lmp ? lmp.getTime() : null,
         ultrasoundDueDate: due ? due.getTime() : null,
       });
+      await Store.setSetting('acknowledgedDisclaimer', true);
       state.view = 'week';
       renderApp();
     }
+    startBtn.addEventListener('click', save);
+
+    const ackRow = el('label', { class: 'ack-row' }, [
+      ackBox,
+      el('span', {
+        class: 'small',
+        html:
+          'I understand Bloom is for general information only, is not medical ' +
+          'advice, and does not replace my healthcare provider. ' +
+          '(<a href="disclaimer.html">Disclaimer</a>)',
+      }),
+    ]);
 
     const card = el('div', { class: 'card setup' }, [
       el('h2', { text: 'Welcome to Bloom' }),
+      el('div', { class: 'callout callout-privacy' }, [
+        el('strong', { text: 'Private by design. ' }),
+        document.createTextNode(
+          'Everything you enter stays on this device and is never sent ' +
+          'anywhere, ever. There are no accounts and no servers — not even we ' +
+          'can see your information.'
+        ),
+      ]),
+      el('div', { class: 'callout callout-warn' }, [
+        el('strong', { text: 'Not medical advice. ' }),
+        document.createTextNode(
+          'Bloom is for general information only and does not replace your ' +
+          'doctor or midwife. For any concern, contact your provider; in an ' +
+          'emergency, call your local emergency number.'
+        ),
+      ]),
       el('p', {
         class: 'muted',
         text:
@@ -202,10 +245,14 @@
       }),
       dueInput,
       error,
-      el('button', { class: 'primary', text: 'Start', onClick: save }),
+      ackRow,
+      startBtn,
       el('p', {
         class: 'muted small',
-        text: 'Everything stays on this device. Nothing is uploaded.',
+        html:
+          'Read the <a href="privacy.html">Privacy Policy</a>, ' +
+          '<a href="terms.html">Terms</a>, and ' +
+          '<a href="disclaimer.html">Disclaimer</a>.',
       }),
     ]);
 
@@ -361,7 +408,44 @@
 
   function renderLogView(container) {
     const week = currentWeek();
+    const wrap = el('div', { class: 'wrap' }, [viewHeader('Log')]);
+    container.appendChild(wrap);
 
+    // --- this-week summary (filled async) ---
+    const summary = el('div', { class: 'card week-summary' });
+    wrap.appendChild(summary);
+
+    // --- feelings / symptoms ---
+    const feelingsCard = el('div', { class: 'card' }, [
+      el('h3', { class: 'card-title', text: `How are you feeling? \u00b7 week ${week}` }),
+    ]);
+    for (const category of LOG_CATEGORIES) {
+      feelingsCard.appendChild(
+        el('p', { class: 'chip-group-title', text: category.title })
+      );
+      const group = el('div', { class: 'chip-group' });
+      for (const option of category.options) {
+        group.appendChild(
+          el('button', {
+            class: `log-chip tone-${option.tone}`,
+            text: option.label,
+            onClick: async () => {
+              await Store.addEntry({
+                kind: option.kind,
+                label: option.label,
+                week,
+              });
+              toast(`Logged: ${option.label}`);
+              renderApp();
+            },
+          })
+        );
+      }
+      feelingsCard.appendChild(group);
+    }
+    wrap.appendChild(feelingsCard);
+
+    // --- measurements (weight + bump): latest value + add; charts live in Trends ---
     const measureCard = (opts) => {
       const card = el('div', { class: 'card' });
       card.appendChild(
@@ -389,28 +473,207 @@
       );
 
       const latestEl = el('div', { class: 'measure-latest', text: '\u2014' });
-      const canvas = el('canvas', { class: 'chart-canvas' });
       const note = el('p', { class: 'muted small' });
       card.appendChild(latestEl);
-      card.appendChild(canvas);
       card.appendChild(note);
+      if (opts.help) card.appendChild(opts.help());
 
       Store.entriesOfKind(opts.kind).then((entries) => {
         if (entries.length === 0) {
           latestEl.textContent = 'Not logged yet';
-          note.textContent = 'Tap Add to record your first measurement.';
-          canvas.style.display = 'none';
+          note.textContent = opts.emptyHint;
           return;
         }
         const last = entries[entries.length - 1];
         latestEl.textContent =
           opts.fromStored(last.value).toFixed(1) + ' ' + opts.unit();
-        if (entries.length < 2) {
-          note.textContent = 'Log once more to see your trend.';
-          canvas.style.display = 'none';
+        note.textContent =
+          entries.length < 2
+            ? 'Log once more to start a trend (see the Trends tab).'
+            : opts.encourage + ' See the Trends tab for your chart.';
+      });
+
+      return card;
+    };
+
+    // disclosure: how to measure your bump
+    const bumpHelp = () => {
+      const body = el('div', { class: 'collapsible-body measure-help' }, [
+        el('p', { text: 'For a simple at-home keepsake measurement of your bump:' }),
+        el('ul', {}, [
+          el('li', { text: 'Use a soft fabric tape measure, standing up and relaxed — don’t hold your belly in.' }),
+          el('li', { text: 'Wrap it around the widest part of your belly, usually level with your belly button.' }),
+          el('li', { text: 'Keep the tape level all the way around, snug but not tight.' }),
+          el('li', { text: 'Measure at a similar time of day and the same spot each week so your trend is consistent.' }),
+        ]),
+        el('p', {
+          class: 'muted small',
+          text:
+            'This is just for your own interest. It is not the same as the ' +
+            'fundal-height measurement your provider takes at appointments, ' +
+            'and it isn’t a medical assessment.',
+        }),
+      ]);
+      body.style.display = 'none';
+      const toggle = el('button', {
+        class: 'measure-help-toggle',
+        text: 'How to measure your bump  \u25be',
+        onClick: () => {
+          const open = body.style.display !== 'none';
+          body.style.display = open ? 'none' : 'block';
+          toggle.textContent = open
+            ? 'How to measure your bump  \u25be'
+            : 'How to measure your bump  \u25b4';
+        },
+      });
+      return el('div', { class: 'measure-help-wrap' }, [toggle, body]);
+    };
+
+    wrap.appendChild(
+      measureCard({
+        title: 'Weight',
+        dialogTitle: 'Log weight',
+        kind: 'weight',
+        unit: weightUnit,
+        toStored: toStoredWeight,
+        fromStored: fromStoredWeight,
+        emptyHint: 'Tap Add to record your first measurement.',
+        encourage: 'Every pound is your body doing its job beautifully.',
+      })
+    );
+    wrap.appendChild(
+      measureCard({
+        title: 'Bump size',
+        dialogTitle: 'Log bump size',
+        kind: 'bump',
+        unit: bumpUnit,
+        toStored: toStoredBump,
+        fromStored: fromStoredBump,
+        emptyHint: 'Tap Add to record your first measurement.',
+        encourage: 'Look how much room your little one is making.',
+        help: bumpHelp,
+      })
+    );
+
+    // --- recent entries for this week (deletable) ---
+    const recentCard = el('div', { class: 'card' }, [
+      el('h3', { class: 'card-title', text: 'This week\u2019s entries' }),
+    ]);
+    const recentList = el('div', { class: 'entry-list' });
+    recentCard.appendChild(recentList);
+    wrap.appendChild(recentCard);
+
+    function describeEntry(e) {
+      if (e.kind === 'weight' && e.value != null) {
+        return fromStoredWeight(e.value).toFixed(1) + ' ' + weightUnit() + ' \u00b7 weight';
+      }
+      if (e.kind === 'bump' && e.value != null) {
+        return fromStoredBump(e.value).toFixed(1) + ' ' + bumpUnit() + ' \u00b7 bump';
+      }
+      return e.label || e.kind;
+    }
+
+    function refreshWeekData() {
+      Store.entriesForWeek(week).then((entries) => {
+        // summary
+        const feelingSymptom = entries.filter(
+          (e) => e.kind === 'feeling' || e.kind === 'symptom'
+        );
+        const good = feelingSymptom.filter(
+          (e) => e.label && toneForLabel(e.label) === 'good'
+        ).length;
+        summary.innerHTML = '';
+        summary.appendChild(el('div', { class: 'summary-emoji', text: '\ud83c\udf3c' }));
+        const total = entries.length;
+        summary.appendChild(
+          el('div', {}, [
+            el('div', {
+              class: 'summary-line',
+              text:
+                total === 0
+                  ? 'Nothing logged yet this week'
+                  : `${total} thing${total === 1 ? '' : 's'} logged this week`,
+            }),
+            good > 0
+              ? el('div', {
+                  class: 'summary-sub muted small',
+                  text: `${good} ${good === 1 ? 'was a' : 'were'} good moment${good === 1 ? '' : 's'}`,
+                })
+              : null,
+          ])
+        );
+
+        // recent list (newest first)
+        const sorted = entries
+          .slice()
+          .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+        recentList.innerHTML = '';
+        if (sorted.length === 0) {
+          recentList.appendChild(
+            el('p', { class: 'muted small', text: 'Tap anything above to start logging.' })
+          );
           return;
         }
-        note.textContent = opts.encourage;
+        for (const e of sorted) {
+          const tone = e.label ? toneForLabel(e.label) : 'neutral';
+          recentList.appendChild(
+            el('div', { class: 'entry-row' }, [
+              el('span', { class: `entry-dot tone-${tone}` }),
+              el('span', { class: 'entry-label', text: describeEntry(e) }),
+              el('button', {
+                class: 'entry-delete',
+                'aria-label': 'Delete entry',
+                text: '\u00d7',
+                onClick: async () => {
+                  await Store.deleteEntry(e.id);
+                  refreshWeekData();
+                },
+              }),
+            ])
+          );
+        }
+      });
+    }
+    refreshWeekData();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Trends view (everything over time)
+  // ---------------------------------------------------------------------------
+
+  function renderTrendsView(container) {
+    const wrap = el('div', { class: 'wrap' }, [viewHeader('Trends')]);
+    container.appendChild(wrap);
+
+    const accent =
+      getComputedStyle(document.documentElement)
+        .getPropertyValue('--accent')
+        .trim() || '#b5739d';
+
+    // Weight + bump line charts over the whole journey.
+    const lineCard = (opts) => {
+      const card = el('div', { class: 'card' }, [
+        el('h3', { class: 'card-title', text: opts.title }),
+      ]);
+      const canvas = el('canvas', { class: 'chart-canvas tall' });
+      const note = el('p', { class: 'muted small' });
+      card.appendChild(canvas);
+      card.appendChild(note);
+
+      Store.entriesOfKind(opts.kind).then((entries) => {
+        if (entries.length < 2) {
+          canvas.style.display = 'none';
+          note.textContent =
+            entries.length === 0
+              ? `No ${opts.noun} logged yet. Add entries from the Log tab.`
+              : `Log ${opts.noun} once more to see a trend line.`;
+          return;
+        }
+        const first = entries[0];
+        const last = entries[entries.length - 1];
+        const change = opts.fromStored(last.value) - opts.fromStored(first.value);
+        const sign = change >= 0 ? '+' : '';
+        note.textContent = `${opts.fromStored(last.value).toFixed(1)} ${opts.unit()} now \u00b7 ${sign}${change.toFixed(1)} ${opts.unit()} since you started logging.`;
         const points = entries.map((e) => ({
           x: e.createdAt,
           y: opts.fromStored(e.value),
@@ -419,45 +682,113 @@
         requestAnimationFrame(() =>
           drawLineChart(canvas, points, {
             formatValue: (v) => Math.round(v) + '',
-            accent:
-              getComputedStyle(document.documentElement)
-                .getPropertyValue('--accent')
-                .trim() || '#b5739d',
+            accent,
           })
         );
       });
-
       return card;
     };
 
-    container.appendChild(
-      el('div', { class: 'wrap' }, [
-        viewHeader('Log'),
-        el('p', { class: 'muted small section-intro', text: `Week ${week}` }),
-        measureCard({
-          title: 'Weight',
-          dialogTitle: 'Log weight',
-          kind: 'weight',
-          unit: weightUnit,
-          toStored: toStoredWeight,
-          fromStored: fromStoredWeight,
-          encourage: 'Every pound is your body doing its job beautifully.',
-        }),
-        measureCard({
-          title: 'Bump size',
-          dialogTitle: 'Log bump size',
-          kind: 'bump',
-          unit: bumpUnit,
-          toStored: toStoredBump,
-          fromStored: fromStoredBump,
-          encourage: 'Look how much room your little one is making.',
-        }),
-        el('p', {
-          class: 'muted small disclaimer',
-          text: 'Symptom and feeling tracking is coming in a later update.',
-        }),
-      ])
+    wrap.appendChild(
+      lineCard({
+        title: 'Weight over time',
+        kind: 'weight',
+        noun: 'weight',
+        unit: weightUnit,
+        fromStored: fromStoredWeight,
+      })
     );
+    wrap.appendChild(
+      lineCard({
+        title: 'Bump size over time',
+        kind: 'bump',
+        noun: 'a bump measurement',
+        unit: bumpUnit,
+        fromStored: fromStoredBump,
+      })
+    );
+
+    // Feelings & symptoms over time: stacked bars per week (good / neutral / tough).
+    const feelCard = el('div', { class: 'card' }, [
+      el('h3', { class: 'card-title', text: 'How you\u2019ve been feeling' }),
+    ]);
+    const feelCanvas = el('canvas', { class: 'chart-canvas tall' });
+    const legend = el('div', { class: 'chart-legend' }, [
+      el('span', { class: 'legend-item' }, [
+        el('span', { class: 'legend-dot tone-good' }),
+        document.createTextNode('Good'),
+      ]),
+      el('span', { class: 'legend-item' }, [
+        el('span', { class: 'legend-dot tone-neutral' }),
+        document.createTextNode('Neutral'),
+      ]),
+      el('span', { class: 'legend-item' }, [
+        el('span', { class: 'legend-dot tone-tough' }),
+        document.createTextNode('Tough'),
+      ]),
+    ]);
+    const feelNote = el('p', { class: 'muted small' });
+    feelCard.appendChild(feelCanvas);
+    feelCard.appendChild(legend);
+    feelCard.appendChild(feelNote);
+    wrap.appendChild(feelCard);
+
+    const toneColors = {
+      good: getCssColor('--good', '#6bbf73'),
+      neutral: '#b0b6bc',
+      tough: '#d9a066',
+    };
+
+    Store.allEntries().then((all) => {
+      const fs = all.filter((e) => e.kind === 'feeling' || e.kind === 'symptom');
+      if (fs.length === 0) {
+        feelCanvas.style.display = 'none';
+        legend.style.display = 'none';
+        feelNote.textContent =
+          'Once you log how you\u2019re feeling, your weeks will show here.';
+        return;
+      }
+      // group by week
+      const byWeek = {};
+      for (const e of fs) {
+        const wk = e.week != null ? e.week : 0;
+        if (!byWeek[wk]) byWeek[wk] = { good: 0, neutral: 0, tough: 0 };
+        const tone = e.label ? toneForLabel(e.label) : 'neutral';
+        byWeek[wk][tone]++;
+      }
+      const weeks = Object.keys(byWeek)
+        .map(Number)
+        .sort((a, b) => a - b);
+      const groups = weeks.map((wk) => ({
+        label: `${wk}`,
+        segments: [
+          { value: byWeek[wk].good, color: toneColors.good },
+          { value: byWeek[wk].neutral, color: toneColors.neutral },
+          { value: byWeek[wk].tough, color: toneColors.tough },
+        ],
+      }));
+      const goodTotal = fs.filter(
+        (e) => e.label && toneForLabel(e.label) === 'good'
+      ).length;
+      feelNote.textContent = `${goodTotal} good moment${goodTotal === 1 ? '' : 's'} logged across ${weeks.length} week${weeks.length === 1 ? '' : 's'}. Bars show entries per week.`;
+      requestAnimationFrame(() => drawStackedBars(feelCanvas, groups));
+    });
+
+    wrap.appendChild(
+      el('p', {
+        class: 'muted small disclaimer',
+        text:
+          'These charts are a personal keepsake of your own entries, not a ' +
+          'medical record or assessment.',
+      })
+    );
+  }
+
+  function getCssColor(varName, fallback) {
+    const v = getComputedStyle(document.documentElement)
+      .getPropertyValue(varName)
+      .trim();
+    return v || fallback;
   }
 
   function renderFoodView(container) {
@@ -602,9 +933,26 @@
     );
 
     wrap.appendChild(
+      el('div', { class: 'card' }, [
+        el('h3', { class: 'card-title', text: 'About & privacy' }),
+        el('p', {
+          class: 'small',
+          text:
+            'Bloom is a private, on-device companion. Your records never leave ' +
+            'this phone — there are no accounts and no servers.',
+        }),
+        el('div', { class: 'link-list' }, [
+          el('a', { class: 'link-row', href: 'privacy.html' }, ['Privacy policy']),
+          el('a', { class: 'link-row', href: 'terms.html' }, ['Terms of use']),
+          el('a', { class: 'link-row', href: 'disclaimer.html' }, ['Medical disclaimer']),
+        ]),
+      ])
+    );
+
+    wrap.appendChild(
       el('p', {
         class: 'muted small disclaimer',
-        text: 'A companion to the Bloom app. All data stays on this device.',
+        text: 'Bloom is informational only and not a substitute for medical care.',
       })
     );
 

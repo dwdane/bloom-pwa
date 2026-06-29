@@ -8,42 +8,42 @@ const LOG_CATEGORIES = [
   {
     title: 'Good moments',
     options: [
-      { label: 'Happy', kind: 'feeling', tone: 'good' },
-      { label: 'Energetic', kind: 'feeling', tone: 'good' },
-      { label: 'Excited', kind: 'feeling', tone: 'good' },
-      { label: 'Calm', kind: 'feeling', tone: 'good' },
-      { label: 'Grateful', kind: 'feeling', tone: 'good' },
-      { label: 'Connected', kind: 'feeling', tone: 'good' },
-      { label: 'Rested', kind: 'feeling', tone: 'good' },
-      { label: 'Glowing', kind: 'feeling', tone: 'good' },
-      { label: 'Baby kicks', kind: 'feeling', tone: 'good' },
+      { label: 'Happy', emoji: '😊', kind: 'feeling', tone: 'good' },
+      { label: 'Energetic', emoji: '⚡', kind: 'feeling', tone: 'good' },
+      { label: 'Excited', emoji: '🤩', kind: 'feeling', tone: 'good' },
+      { label: 'Calm', emoji: '😌', kind: 'feeling', tone: 'good' },
+      { label: 'Grateful', emoji: '🙏', kind: 'feeling', tone: 'good' },
+      { label: 'Connected', emoji: '💞', kind: 'feeling', tone: 'good' },
+      { label: 'Rested', emoji: '🛌', kind: 'feeling', tone: 'good' },
+      { label: 'Glowing', emoji: '✨', kind: 'feeling', tone: 'good' },
+      { label: 'Baby kicks', emoji: '🦶', kind: 'feeling', tone: 'good' },
     ],
   },
   {
     title: 'Mood',
     options: [
-      { label: 'Emotional', kind: 'feeling', tone: 'neutral' },
-      { label: 'Anxious', kind: 'feeling', tone: 'tough' },
-      { label: 'Irritable', kind: 'feeling', tone: 'tough' },
-      { label: 'Overwhelmed', kind: 'feeling', tone: 'tough' },
-      { label: 'Foggy', kind: 'feeling', tone: 'neutral' },
+      { label: 'Emotional', emoji: '🥹', kind: 'feeling', tone: 'neutral' },
+      { label: 'Anxious', emoji: '😰', kind: 'feeling', tone: 'tough' },
+      { label: 'Irritable', emoji: '😤', kind: 'feeling', tone: 'tough' },
+      { label: 'Overwhelmed', emoji: '😵‍💫', kind: 'feeling', tone: 'tough' },
+      { label: 'Foggy', emoji: '🌫️', kind: 'feeling', tone: 'neutral' },
     ],
   },
   {
     title: 'Body',
     options: [
-      { label: 'Nausea', kind: 'symptom', tone: 'tough' },
-      { label: 'Fatigue', kind: 'symptom', tone: 'tough' },
-      { label: 'Headache', kind: 'symptom', tone: 'tough' },
-      { label: 'Heartburn', kind: 'symptom', tone: 'tough' },
-      { label: 'Back pain', kind: 'symptom', tone: 'tough' },
-      { label: 'Cramping', kind: 'symptom', tone: 'tough' },
-      { label: 'Swelling', kind: 'symptom', tone: 'tough' },
-      { label: 'Insomnia', kind: 'symptom', tone: 'tough' },
-      { label: 'Cravings', kind: 'symptom', tone: 'neutral' },
-      { label: 'Constipation', kind: 'symptom', tone: 'tough' },
-      { label: 'Dizziness', kind: 'symptom', tone: 'tough' },
-      { label: 'Congestion', kind: 'symptom', tone: 'tough' },
+      { label: 'Nausea', emoji: '🤢', kind: 'symptom', tone: 'tough' },
+      { label: 'Fatigue', emoji: '🥱', kind: 'symptom', tone: 'tough' },
+      { label: 'Headache', emoji: '🤕', kind: 'symptom', tone: 'tough' },
+      { label: 'Heartburn', emoji: '🔥', kind: 'symptom', tone: 'tough' },
+      { label: 'Back pain', emoji: '💢', kind: 'symptom', tone: 'tough' },
+      { label: 'Cramping', emoji: '😣', kind: 'symptom', tone: 'tough' },
+      { label: 'Swelling', emoji: '🫧', kind: 'symptom', tone: 'tough' },
+      { label: 'Insomnia', emoji: '🌙', kind: 'symptom', tone: 'tough' },
+      { label: 'Cravings', emoji: '🍫', kind: 'symptom', tone: 'neutral' },
+      { label: 'Constipation', emoji: '🚽', kind: 'symptom', tone: 'tough' },
+      { label: 'Dizziness', emoji: '💫', kind: 'symptom', tone: 'tough' },
+      { label: 'Congestion', emoji: '🤧', kind: 'symptom', tone: 'tough' },
     ],
   },
 ];
@@ -56,4 +56,14 @@ function toneForLabel(label) {
     }
   }
   return 'neutral';
+}
+
+// Emoji for a stored label, so past entries show their icon consistently.
+function emojiForLabel(label) {
+  for (const category of LOG_CATEGORIES) {
+    for (const option of category.options) {
+      if (option.label === label) return option.emoji || '';
+    }
+  }
+  return '';
 }

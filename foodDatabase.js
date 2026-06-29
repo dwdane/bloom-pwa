@@ -800,3 +800,24 @@ function foodSearch(query) {
   }
   return [...starts, ...nameContains, ...aliasContains];
 }
+
+// Full organization names, so sources read clearly instead of as acronyms.
+const SOURCE_NAMES = {
+  ACOG: 'American College of Obstetricians and Gynecologists',
+  CDC: 'Centers for Disease Control and Prevention',
+  FDA: 'U.S. Food and Drug Administration',
+  EPA: 'U.S. Environmental Protection Agency',
+  USDA: 'U.S. Department of Agriculture',
+  NHS: 'National Health Service (UK)',
+  'Mayo Clinic': 'Mayo Clinic',
+};
+
+// Expand a source string like "FDA & EPA" or "FDA/EPA" into full names.
+function expandSource(source) {
+  if (!source) return '';
+  return source
+    .split(/\s*(?:&|\/|,| and )\s*/i)
+    .map((part) => SOURCE_NAMES[part.trim()] || part.trim())
+    .filter(Boolean)
+    .join(' and ');
+}

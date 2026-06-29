@@ -8,10 +8,15 @@
 
   const state = {
     dating: { lmp: null, ultrasoundDueDate: null },
-    imperial: false,
+    imperial: true,
+    babyName: '',
+    gender: 'surprise', // 'girl' | 'boy' | 'surprise'
     view: 'week',
     viewWeek: null,
+    prevView: 'week',
     tool: null, // within Tools: 'contraction' | 'kick' | 'birthplan' | 'questions'
+    logTab: 'feelings', // within Log: 'feelings' | 'weight' | 'bump'
+    logDate: null, // selected day (ISO) for daily logging; defaults to today
   };
 
   // Live timers (contraction/kick displays) that must be stopped when the view
@@ -77,6 +82,64 @@
   function currentWeek() {
     const age = ageAt(state.dating);
     return age ? age.weeks : WEEK_MIN;
+  }
+
+  // --- baby identity helpers ---
+  const babyName = () => (state.babyName || '').trim();
+  const babyLabel = () => babyName() || 'Baby';
+  function babyPronoun() {
+    if (state.gender === 'girl') return { subj: 'she', poss: 'her', obj: 'her' };
+    if (state.gender === 'boy') return { subj: 'he', poss: 'his', obj: 'him' };
+    return { subj: 'they', poss: 'their', obj: 'them' };
+  }
+  function genderChipText() {
+    if (state.gender === 'girl') return "It's a girl";
+    if (state.gender === 'boy') return "It's a boy";
+    return 'Team surprise';
+  }
+  function genderEmoji() {
+    if (state.gender === 'girl') return '\ud83c\udf80'; // ribbon
+    if (state.gender === 'boy') return '\ud83d\udc99'; // blue heart
+    return '\ud83d\udc9b'; // yellow heart
+  }
+
+  // --- day-level date math for the calendar strip ---
+  const MS_DAY = 86400000;
+  function midnight(d) {
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  }
+  function addDays(d, n) {
+    const r = midnight(d);
+    r.setDate(r.getDate() + n);
+    return r;
+  }
+  function pregnancyStart() {
+    const due = dueDate(state.dating);
+    return due ? addDays(due, -280) : null;
+  }
+  function weekOfDate(date) {
+    const start = pregnancyStart();
+    if (!start) return WEEK_MIN;
+    const days = Math.floor((midnight(date) - start) / MS_DAY);
+    return Math.floor(days / 7);
+  }
+  // The seven calendar dates (Date objects) that make up gestational week W.
+  function datesOfWeek(week) {
+    const start = pregnancyStart();
+    if (!start) return [];
+    return Array.from({ length: 7 }, (_, d) => addDays(start, week * 7 + d));
+  }
+  function todayISO() {
+    return isoDate(new Date());
+  }
+  function selectedDate() {
+    return state.logDate || todayISO();
+  }
+  // The date a stored entry belongs to (explicit date, or derived from creation).
+  function entryDate(e) {
+    if (e.date) return e.date;
+    if (e.createdAt) return isoDate(new Date(e.createdAt));
+    return todayISO();
   }
 
   function numberDialog({ title, unit, placeholder }) {
@@ -164,6 +227,7 @@
     if (state.view === 'week') renderWeekView(content);
     else if (state.view === 'log') renderLogView(content);
     else if (state.view === 'tools') renderToolsView(content);
+    else if (state.view === 'lists') renderListsView(content);
     else if (state.view === 'food') renderFoodView(content);
     else if (state.view === 'settings') renderSettingsView(content);
 
@@ -171,24 +235,54 @@
       navItem('week', 'Week', '<rect x="3" y="4" width="18" height="18" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="16" y1="2" x2="16" y2="6"/>'),
       navItem('log', 'Log', '<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>'),
       navItem('tools', 'Tools', '<path d="M14.7 6.3a4 4 0 0 1-5.4 5.3L4 17v3h3l5.4-5.3a4 4 0 0 1 5.3-5.4l-2.6 2.6-2-2 2.6-2.6Z"/>'),
+      navItem('lists', 'Lists', '<line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><polyline points="3 6 4 7 6 5"/><polyline points="3 12 4 13 6 11"/><line x1="3" y1="18" x2="3.01" y2="18"/>'),
       navItem('food', 'Food', '<path d="M3 2v7a3 3 0 0 0 6 0V2"/><line x1="6" y1="9" x2="6" y2="22"/><path d="M17 2c-1.5 1-2 3-2 5s.5 4 2 5v10"/>'),
-      navItem('settings', 'Settings', '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 8 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H2a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 3.6 8a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H8a1.65 1.65 0 0 0 1-1.51V2a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V8a1.65 1.65 0 0 0 1.51 1H22a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/>'),
     ]);
 
     root.appendChild(content);
     root.appendChild(nav);
   }
 
-  function viewHeader(title) {
-    return el('header', { class: 'app-header' }, [
-      el('h1', { class: 'app-title', text: title }),
-    ]);
+  function viewHeader(title, opts = {}) {
+    const children = [el('h1', { class: 'app-title', text: title })];
+    if (!opts.noGear) {
+      children.push(
+        el('button', {
+          class: 'gear-btn',
+          'aria-label': 'Settings',
+          html:
+            '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 8 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H2a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 3.6 8a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H8a1.65 1.65 0 0 0 1-1.51V2a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V8a1.65 1.65 0 0 0 1.51 1H22a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg>',
+          onClick: () => {
+            state.prevView = state.view;
+            state.view = 'settings';
+            state.tool = null;
+            renderApp();
+          },
+        })
+      );
+    }
+    return el('header', { class: 'app-header has-gear' }, children);
   }
 
   function renderSetup() {
     root.innerHTML = '';
     const lmpInput = el('input', { type: 'date', max: isoDate(new Date()) });
     const dueInput = el('input', { type: 'date' });
+    const nameInput = el('input', { type: 'text', placeholder: 'Baby\u2019s name or nickname', autocomplete: 'off' });
+    let pickedGender = 'surprise';
+    const genderSeg = el('div', { class: 'segmented gender-seg' });
+    for (const [key, label] of [['girl', 'Girl'], ['boy', 'Boy'], ['surprise', 'Surprise']]) {
+      const b = el('button', {
+        class: 'seg-btn' + (key === 'surprise' ? ' active' : ''),
+        text: label,
+        onClick: () => {
+          pickedGender = key;
+          [...genderSeg.children].forEach((c) => c.classList.toggle('active', c.dataset.g === key));
+        },
+      });
+      b.dataset.g = key;
+      genderSeg.appendChild(b);
+    }
     const error = el('p', { class: 'error' });
 
     const ackBox = el('input', { type: 'checkbox', id: 'ack' });
@@ -212,10 +306,13 @@
       }
       state.dating.lmp = lmp;
       state.dating.ultrasoundDueDate = due;
+      state.babyName = nameInput.value.trim();
+      state.gender = pickedGender;
       await Store.setSetting('dating', {
         lmp: lmp ? lmp.getTime() : null,
         ultrasoundDueDate: due ? due.getTime() : null,
       });
+      await Store.setSetting('baby', { name: state.babyName, gender: state.gender });
       await Store.setSetting('acknowledgedDisclaimer', true);
       state.view = 'week';
       renderApp();
@@ -264,6 +361,10 @@
         text: 'Ultrasound due date (optional, preferred if known)',
       }),
       dueInput,
+      el('label', { class: 'field-label', text: 'Baby\u2019s name (optional)' }),
+      nameInput,
+      el('label', { class: 'field-label', text: 'Do you know the sex? (optional)' }),
+      genderSeg,
       error,
       ackRow,
       startBtn,
@@ -276,7 +377,122 @@
       }),
     ]);
 
-    root.appendChild(el('div', { class: 'wrap' }, [viewHeader('Bloom'), card]));
+    const openSource = el('p', { class: 'muted small setup-os' }, [
+      document.createTextNode('Bloom is open source — '),
+      el('a', { href: 'https://github.com/dwdane/bloom-pwa/', target: '_blank', rel: 'noopener' }, ['view the code on GitHub']),
+      document.createTextNode('.'),
+    ]);
+
+    root.appendChild(
+      el('div', { class: 'wrap' }, [
+        viewHeader('Bloom', { noGear: true }),
+        card,
+        installCard(),
+        openSource,
+      ])
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Calendar day strip (Flo-style): the seven days of a gestational week, with
+  // today and the selected day highlighted. Reused on the Week and Log tabs.
+  // ---------------------------------------------------------------------------
+
+  function calendarStrip(displayWeek, selectedIso, onSelectDay, onWeekChange) {
+    const dates = datesOfWeek(displayWeek);
+    const tIso = todayISO();
+    const dow = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+
+    const header = el('div', { class: 'cal-header' }, [
+      onWeekChange
+        ? el('button', {
+            class: 'cal-nav',
+            text: '\u2039',
+            disabled: displayWeek <= WEEK_MIN ? '' : null,
+            onClick: () => onWeekChange(displayWeek - 1),
+          })
+        : el('span', {}),
+      el('span', { class: 'cal-week-label', text: `Week ${displayWeek}` }),
+      onWeekChange
+        ? el('button', {
+            class: 'cal-nav',
+            text: '\u203a',
+            disabled: displayWeek >= WEEK_MAX ? '' : null,
+            onClick: () => onWeekChange(displayWeek + 1),
+          })
+        : el('span', {}),
+    ]);
+
+    const days = el('div', { class: 'cal-days' });
+    for (const d of dates) {
+      const iso = isoDate(d);
+      const cls =
+        'cal-day' +
+        (iso === selectedIso ? ' selected' : '') +
+        (iso === tIso ? ' today' : '') +
+        (iso > tIso ? ' future' : '');
+      days.appendChild(
+        el('button', { class: cls, onClick: () => onSelectDay(iso) }, [
+          el('span', { class: 'cal-dow', text: dow[d.getDay()] }),
+          el('span', { class: 'cal-date', text: String(d.getDate()) }),
+        ])
+      );
+    }
+
+    return el('div', { class: 'cal-strip' }, [header, days]);
+  }
+
+  function prettyDayLabel(iso) {
+    if (iso === todayISO()) return 'Today';
+    const [y, m, d] = iso.split('-').map(Number);
+    const date = new Date(y, m - 1, d);
+    return date.toLocaleDateString(undefined, {
+      weekday: 'long',
+      month: 'short',
+      day: 'numeric',
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // New-week celebration: a brief shower of the current fruit emoji the first
+  // time the app is opened on a new gestational week.
+  // ---------------------------------------------------------------------------
+
+  async function maybeCelebrateNewWeek() {
+    const wk = currentWeek();
+    const lastSeen = await Store.getSetting('lastSeenWeek');
+    if (lastSeen == null) {
+      await Store.setSetting('lastSeenWeek', wk);
+      return;
+    }
+    if (wk > lastSeen && wk >= WEEK_MIN && wk <= WEEK_MAX) {
+      await Store.setSetting('lastSeenWeek', wk);
+      const info = weekContentFor(wk);
+      celebrateWeek(wk, info.emoji);
+    }
+  }
+
+  function celebrateWeek(week, emoji) {
+    const layer = el('div', { class: 'celebrate-layer' });
+    const banner = el('div', { class: 'celebrate-banner' }, [
+      el('div', { class: 'celebrate-week', text: `Week ${week}` }),
+      el('div', { class: 'celebrate-sub', text: `${babyLabel()} is growing \u2014 here we go!` }),
+    ]);
+    layer.appendChild(banner);
+
+    const count = 22;
+    for (let i = 0; i < count; i++) {
+      const drop = el('div', { class: 'celebrate-drop', text: emoji });
+      drop.style.left = Math.random() * 100 + '%';
+      drop.style.animationDelay = Math.random() * 0.6 + 's';
+      drop.style.animationDuration = 1.6 + Math.random() * 1.2 + 's';
+      drop.style.fontSize = 1.4 + Math.random() * 1.6 + 'rem';
+      layer.appendChild(drop);
+    }
+
+    document.body.appendChild(layer);
+    setTimeout(() => layer.classList.add('fade'), 2200);
+    setTimeout(() => layer.remove(), 2900);
   }
 
   function renderWeekView(container) {
@@ -296,13 +512,48 @@
       ? ['', 'First trimester', 'Second trimester', 'Third trimester'][age.trimester]
       : '';
 
-    const hero = el('div', { class: 'card hero' }, [
+    const heroChildren = [
       el('div', { class: 'hero-emoji', text: info.emoji }),
       el('div', { class: 'hero-week', text: `Week ${info.week}` }),
-      el('div', { class: 'hero-fruit', text: `About the size of ${info.fruit}` }),
-      measure ? el('div', { class: 'hero-measure', text: measure + lengthNote }) : null,
-      trimesterLabel && !isOther ? el('div', { class: 'chip', text: trimesterLabel }) : null,
-    ]);
+    ];
+    if (babyName()) {
+      heroChildren.push(el('div', { class: 'hero-name', text: babyName() }));
+    }
+    heroChildren.push(
+      el('div', { class: 'hero-fruit', text: `About the size of ${info.fruit}` })
+    );
+    if (measure) {
+      heroChildren.push(el('div', { class: 'hero-measure', text: measure + lengthNote }));
+    }
+    const heroChips = el('div', { class: 'hero-chips' });
+    if (trimesterLabel && !isOther) {
+      heroChips.appendChild(el('div', { class: 'chip', text: trimesterLabel }));
+    }
+    heroChips.appendChild(
+      el('div', { class: `chip gender-chip ${state.gender}` }, [
+        document.createTextNode(genderEmoji() + ' ' + genderChipText()),
+      ])
+    );
+    heroChildren.push(heroChips);
+    const hero = el('div', { class: 'card hero' }, heroChildren);
+
+    // calendar day strip for the viewed week; tap a day to log it
+    const strip = pregnancyStart()
+      ? calendarStrip(
+          week,
+          week === liveWeek ? todayISO() : isoDate(datesOfWeek(week)[0] || new Date()),
+          (iso) => {
+            state.logDate = iso;
+            state.view = 'log';
+            state.logTab = 'feelings';
+            renderApp();
+          },
+          (w) => {
+            state.viewWeek = Math.max(WEEK_MIN, Math.min(WEEK_MAX, w));
+            renderApp();
+          }
+        )
+      : null;
 
     const nav = el('div', { class: 'week-nav' }, [
       el('button', {
@@ -357,7 +608,7 @@
     }
 
     const babyCard = el('div', { class: 'card' }, [
-      el('h3', { class: 'card-title', text: 'Baby this week' }),
+      el('h3', { class: 'card-title', text: `${babyLabel()} this week` }),
       el('p', { text: info.baby }),
     ]);
 
@@ -410,6 +661,7 @@
       el('div', { class: 'wrap' }, [
         viewHeader('Bloom'),
         hero,
+        strip,
         nav,
         progress,
         babyCard,
@@ -427,17 +679,75 @@
   }
 
   function renderLogView(container) {
-    const week = currentWeek();
+    const dayIso = selectedDate();
+    const week = pregnancyStart() ? weekOfDate(new Date(dayIso + 'T00:00:00')) : currentWeek();
     const wrap = el('div', { class: 'wrap' }, [viewHeader('Log')]);
     container.appendChild(wrap);
 
-    // --- this-week summary (filled async) ---
+    // calendar strip: pick the day to log
+    if (pregnancyStart()) {
+      wrap.appendChild(
+        calendarStrip(
+          week,
+          dayIso,
+          (iso) => {
+            if (iso > todayISO()) return; // don't log the future
+            state.logDate = iso;
+            renderApp();
+          },
+          (w) => {
+            // shift the selected day by a week, keeping the weekday
+            const cur = new Date(dayIso + 'T00:00:00');
+            const shifted = addDays(cur, (w - week) * 7);
+            state.logDate = isoDate(shifted > new Date() ? new Date() : shifted);
+            renderApp();
+          }
+        )
+      );
+    }
+    wrap.appendChild(
+      el('p', { class: 'day-label', text: `${prettyDayLabel(dayIso)} \u00b7 week ${week}` })
+    );
+
+    // --- this-day summary (filled async) ---
     const summary = el('div', { class: 'card week-summary' });
     wrap.appendChild(summary);
 
+    // --- sub-tabs: Feelings / Weight / Bump ---
+    const sectFeelings = el('div', {});
+    const sectWeight = el('div', {});
+    const sectBump = el('div', {});
+    const sections = { feelings: sectFeelings, weight: sectWeight, bump: sectBump };
+
+    function showLogTab(which) {
+      state.logTab = which;
+      for (const key of Object.keys(sections)) {
+        sections[key].style.display = key === which ? 'block' : 'none';
+      }
+      [...seg.children].forEach((b) =>
+        b.classList.toggle('active', b.dataset.tab === which)
+      );
+    }
+
+    const seg = el('div', { class: 'segmented' });
+    for (const [key, label] of [['feelings', 'Feelings'], ['weight', 'Weight'], ['bump', 'Bump']]) {
+      const btn = el('button', {
+        class: 'seg-btn',
+        text: label,
+        onClick: () => showLogTab(key),
+      });
+      btn.dataset.tab = key;
+      seg.appendChild(btn);
+    }
+    wrap.appendChild(seg);
+    wrap.appendChild(sectFeelings);
+    wrap.appendChild(sectWeight);
+    wrap.appendChild(sectBump);
+
     // --- feelings / symptoms ---
+    const dayWord = dayIso === todayISO() ? 'today' : 'that day';
     const feelingsCard = el('div', { class: 'card' }, [
-      el('h3', { class: 'card-title', text: `How are you feeling? \u00b7 week ${week}` }),
+      el('h3', { class: 'card-title', text: `How are you feeling ${dayWord}?` }),
     ]);
     for (const category of LOG_CATEGORIES) {
       feelingsCard.appendChild(
@@ -448,17 +758,20 @@
         group.appendChild(
           el('button', {
             class: `log-chip tone-${option.tone}`,
-            text: option.label,
             onClick: async () => {
               await Store.addEntry({
                 kind: option.kind,
                 label: option.label,
                 week,
+                date: dayIso,
               });
               toast(`Logged: ${option.label}`);
               renderApp();
             },
-          })
+          }, [
+            option.emoji ? el('span', { class: 'chip-emoji', text: option.emoji }) : null,
+            document.createTextNode(option.label),
+          ])
         );
       }
       feelingsCard.appendChild(group);
@@ -481,7 +794,7 @@
       },
     });
     feelingsCard.appendChild(el('div', { class: 'measure-help-wrap' }, [moveToggle, moveBody]));
-    wrap.appendChild(feelingsCard);
+    sectFeelings.appendChild(feelingsCard);
 
     // --- things that may help (relief tips for this week's tough symptoms) ---
     const reliefCard = el('div', { class: 'card' }, [
@@ -489,7 +802,7 @@
     ]);
     const reliefBody = el('div', {});
     reliefCard.appendChild(reliefBody);
-    wrap.appendChild(reliefCard);
+    sectFeelings.appendChild(reliefCard);
 
     // --- measurements (weight + bump): latest value + add; charts live in Trends ---
     const measureCard = (opts) => {
@@ -510,6 +823,7 @@
                 kind: opts.kind,
                 value: opts.toStored(entered),
                 week,
+                date: dayIso,
               });
               toast(`Logged ${entered.toFixed(1)} ${opts.unit()}`);
               renderApp();
@@ -576,7 +890,7 @@
       return el('div', { class: 'measure-help-wrap' }, [toggle, body]);
     };
 
-    wrap.appendChild(
+    sectWeight.appendChild(
       measureCard({
         title: 'Weight',
         dialogTitle: 'Log weight',
@@ -588,7 +902,7 @@
         encourage: 'Every pound is your body doing its job beautifully.',
       })
     );
-    wrap.appendChild(
+    sectBump.appendChild(
       measureCard({
         title: 'Bump size',
         dialogTitle: 'Log bump size',
@@ -602,16 +916,16 @@
       })
     );
 
-    // --- recent entries for this week (deletable) ---
+    // --- entries for the selected day (deletable) — lives under Feelings ---
     const recentCard = el('div', { class: 'card' }, [
-      el('h3', { class: 'card-title', text: 'This week\u2019s entries' }),
+      el('h3', { class: 'card-title', text: dayIso === todayISO() ? 'Logged today' : 'Logged that day' }),
     ]);
     const recentList = el('div', { class: 'entry-list' });
     recentCard.appendChild(recentList);
-    wrap.appendChild(recentCard);
+    sectFeelings.appendChild(recentCard);
 
     // folded-in trend: how you've been feeling over time (collapsible)
-    wrap.appendChild(feelingsTrendCard());
+    sectFeelings.appendChild(feelingsTrendCard());
 
     function describeEntry(e) {
       if (e.kind === 'weight' && e.value != null) {
@@ -624,7 +938,8 @@
     }
 
     function refreshWeekData() {
-      Store.entriesForWeek(week).then((entries) => {
+      Store.entriesForDate(dayIso).then((entries) => {
+        const isToday = dayIso === todayISO();
         // summary
         const feelingSymptom = entries.filter(
           (e) => e.kind === 'feeling' || e.kind === 'symptom'
@@ -641,19 +956,19 @@
               class: 'summary-line',
               text:
                 total === 0
-                  ? 'Nothing logged yet this week'
-                  : `${total} thing${total === 1 ? '' : 's'} logged this week`,
+                  ? (isToday ? 'Nothing logged yet today' : 'Nothing logged that day')
+                  : `${total} thing${total === 1 ? '' : 's'} logged ${isToday ? 'today' : 'that day'}`,
             }),
             good > 0
               ? el('div', {
                   class: 'summary-sub muted small',
-                  text: `${good} ${good === 1 ? 'was a' : 'were'} good moment${good === 1 ? '' : 's'}`,
+                  text: `${good} good moment${good === 1 ? '' : 's'} \ud83d\udc9b`,
                 })
               : null,
           ])
         );
 
-        // relief tips for distinct symptoms/feelings logged this week that have advice
+        // relief tips for distinct symptoms/feelings logged that day that have advice
         reliefBody.innerHTML = '';
         const labels = [];
         for (const e of feelingSymptom) {
@@ -708,9 +1023,12 @@
         }
         for (const e of sorted) {
           const tone = e.label ? toneForLabel(e.label) : 'neutral';
+          const em = e.label ? emojiForLabel(e.label) : '';
           recentList.appendChild(
             el('div', { class: 'entry-row' }, [
-              el('span', { class: `entry-dot tone-${tone}` }),
+              em
+                ? el('span', { class: 'entry-emoji', text: em })
+                : el('span', { class: `entry-dot tone-${tone}` }),
               el('span', { class: 'entry-label', text: describeEntry(e) }),
               el('button', {
                 class: 'entry-delete',
@@ -727,6 +1045,7 @@
       });
     }
     refreshWeekData();
+    showLogTab(state.logTab);
   }
 
   // ---------------------------------------------------------------------------
@@ -892,14 +1211,10 @@
   function renderToolsView(container) {
     if (state.tool === 'contraction') return renderContractionTimer(container);
     if (state.tool === 'kick') return renderKickCounter(container);
-    if (state.tool === 'birthplan') return renderBirthPlan(container);
-    if (state.tool === 'questions') return renderDoctorQuestions(container);
 
     const tools = [
       { key: 'contraction', title: 'Contraction timer', desc: 'Time contractions and see how close together they are.' },
       { key: 'kick', title: 'Kick counter', desc: 'Count baby\u2019s movements, with guidance on what to expect.' },
-      { key: 'birthplan', title: 'Birth plan', desc: 'Build your preferences and a hospital-bag checklist.' },
-      { key: 'questions', title: 'Questions for your doctor', desc: 'Jot down questions for your next appointment.' },
     ];
 
     const list = el('div', { class: 'tool-list' });
@@ -1224,220 +1539,252 @@
     renderHistory();
   }
 
-  // --- Birth plan ---
-  function renderBirthPlan(container) {
-    const wrap = el('div', { class: 'wrap' }, [toolHeader('Birth plan')]);
+  // ---------------------------------------------------------------------------
+  // Lists tab: flexible, named, collapsible checklists + a free-notes pad.
+  // Replaces the old rigid birth-plan / questions / packing screens. Data shape:
+  //   lists: [{ id, name, collapsed, items: [{ id, text, done }] }]
+  //   notes: free-text string
+  // Stored in settings as 'userLists' and 'userNotes'.
+  // ---------------------------------------------------------------------------
+
+  function uid() {
+    return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+  }
+
+  function renderListsView(container) {
+    const wrap = el('div', { class: 'wrap' }, [viewHeader('Lists & notes')]);
     container.appendChild(wrap);
 
     wrap.appendChild(
       el('p', {
         class: 'muted small section-intro',
-        text: 'A birth plan shares your preferences with your care team. It\u2019s a guide, not a guarantee \u2014 staying flexible on the day is normal and healthy.',
+        text: 'Make these your own \u2014 add anything, check it off, or delete it. The starter items are just here so nothing slips through the cracks. You\u2019ve got this.',
       })
     );
 
-    Promise.all([
-      Store.getSetting('birthPlan'),
-      Store.getSetting('birthPlanBag'),
-    ]).then(([savedPlan, savedBag]) => {
-      const plan = savedPlan || {};
-      const bag = savedBag || {};
-
-      const persistPlan = () => Store.setSetting('birthPlan', plan);
-      const persistBag = () => Store.setSetting('birthPlanBag', bag);
-
-      for (const section of BIRTH_PLAN_SECTIONS) {
-        const card = el('div', { class: 'card' }, [
-          el('h3', { class: 'card-title', text: section.title }),
-        ]);
-        if (!plan[section.key]) plan[section.key] = { selected: [], note: '' };
-        const entry = plan[section.key];
-
-        if (section.type === 'select') {
-          const group = el('div', { class: 'chip-group' });
-          for (const opt of section.options) {
-            const chip = el('button', {
-              class: 'plan-chip' + (entry.selected.includes(opt) ? ' selected' : ''),
-              text: opt,
-              onClick: () => {
-                const idx = entry.selected.indexOf(opt);
-                if (idx >= 0) entry.selected.splice(idx, 1);
-                else entry.selected.push(opt);
-                chip.classList.toggle('selected');
-                persistPlan();
-              },
-            });
-            group.appendChild(chip);
-          }
-          card.appendChild(group);
-        } else {
-          const ta = el('textarea', {
-            class: 'plan-textarea',
-            rows: '3',
-            placeholder: section.placeholder || '',
-          });
-          ta.value = entry.note || '';
-          ta.addEventListener('input', () => {
-            entry.note = ta.value;
-          });
-          ta.addEventListener('blur', persistPlan);
-          card.appendChild(ta);
-        }
-        wrap.appendChild(card);
-      }
-
-      // Hospital bag checklist
-      const bagCard = el('div', { class: 'card' }, [
-        el('h3', { class: 'card-title', text: 'Hospital bag checklist' }),
-      ]);
-      for (const group of HOSPITAL_BAG) {
-        bagCard.appendChild(el('p', { class: 'chip-group-title', text: group.group }));
-        for (const item of group.items) {
-          const id = group.group + '|' + item;
-          const row = el('label', { class: 'check-row' }, [
-            el('input', {
-              type: 'checkbox',
-              checked: bag[id] ? 'checked' : null,
-              onChange: (e) => {
-                bag[id] = e.target.checked;
-                persistBag();
-              },
-            }),
-            el('span', { text: item }),
-          ]);
-          bagCard.appendChild(row);
-        }
-      }
-      wrap.appendChild(bagCard);
-
-      wrap.appendChild(
-        el('p', {
-          class: 'muted small disclaimer',
-          text: 'Saved on this device as you go. Bring it to an appointment to talk through with your provider.',
-        })
-      );
+    // Free notes pad
+    const notesCard = el('div', { class: 'card' }, [
+      el('h3', { class: 'card-title', text: 'Notes' }),
+    ]);
+    const notesArea = el('textarea', {
+      class: 'plan-textarea',
+      rows: '4',
+      placeholder: 'A place for anything \u2014 thoughts, reminders, names you\u2019re considering\u2026',
     });
-  }
+    notesCard.appendChild(notesArea);
+    wrap.appendChild(notesCard);
 
-  // --- Doctor questions ---
-  function renderDoctorQuestions(container) {
-    const wrap = el('div', { class: 'wrap' }, [toolHeader('Questions for your doctor')]);
-    container.appendChild(wrap);
+    const listsHolder = el('div', {});
+    wrap.appendChild(listsHolder);
 
-    const input = el('input', {
+    // Add-list controls
+    const addWrap = el('div', { class: 'card add-list-card' }, [
+      el('h3', { class: 'card-title', text: 'Add a list' }),
+    ]);
+    const newNameInput = el('input', {
       type: 'text',
       class: 'food-search',
-      placeholder: 'Add a question\u2026',
+      placeholder: 'Name a new list (e.g. \u201cThings to ask mom\u201d)',
       autocomplete: 'off',
     });
-    const addBtn = el('button', { class: 'primary compact', text: 'Add' });
-    const inputRow = el('div', { class: 'q-input-row' }, [input, addBtn]);
+    const newNameBtn = el('button', { class: 'primary compact', text: 'Create' });
+    addWrap.appendChild(el('div', { class: 'q-input-row' }, [newNameInput, newNameBtn]));
+    const templateRow = el('div', {});
+    addWrap.appendChild(el('p', { class: 'chip-group-title', text: 'Or start from a template' }));
+    addWrap.appendChild(templateRow);
+    wrap.appendChild(addWrap);
 
-    const card = el('div', { class: 'card' }, [
-      el('h3', { class: 'card-title', text: 'Your questions' }),
-      inputRow,
-    ]);
-    const listEl = el('div', { class: 'entry-list' });
-    card.appendChild(listEl);
-    wrap.appendChild(card);
+    let lists = [];
+    let notes = '';
 
-    const suggestions = [
-      'Is my weight gain on track?',
-      'What foods or activities should I avoid now?',
-      'What symptoms should I call about?',
-      'When is my next scan or test?',
-      'What are my options for pain relief?',
-    ];
-    const suggCard = el('div', { class: 'card' }, [
-      el('h3', { class: 'card-title', text: 'Common questions to add' }),
-    ]);
-    const suggWrap = el('div', { class: 'chip-group' });
-    suggCard.appendChild(suggWrap);
-    wrap.appendChild(suggCard);
+    const persistLists = () => Store.setSetting('userLists', lists);
+    const persistNotes = () => Store.setSetting('userNotes', notes);
 
-    let questions = [];
+    notesArea.addEventListener('input', () => {
+      notes = notesArea.value;
+    });
+    notesArea.addEventListener('blur', persistNotes);
 
-    function persist() {
-      return Store.setSetting('doctorQuestions', questions);
-    }
-
-    function renderList() {
-      listEl.innerHTML = '';
-      if (questions.length === 0) {
-        listEl.appendChild(el('p', { class: 'muted small', text: 'No questions yet. Add one above, or tap a suggestion.' }));
+    function renderTemplateChips() {
+      templateRow.innerHTML = '';
+      const existingNames = lists.map((l) => l.name.toLowerCase());
+      const available = LIST_TEMPLATES.filter(
+        (t) => !existingNames.includes(t.name.toLowerCase())
+      );
+      if (available.length === 0) {
+        templateRow.appendChild(el('p', { class: 'muted small', text: 'All templates added \u2014 build your own above.' }));
         return;
       }
-      questions.forEach((q) => {
-        const checkbox = el('input', {
+      const chips = el('div', { class: 'chip-group' });
+      for (const t of available) {
+        chips.appendChild(
+          el('button', {
+            class: 'log-chip tone-neutral',
+            text: '+ ' + t.name,
+            onClick: () => {
+              lists.unshift({
+                id: uid(),
+                name: t.name,
+                collapsed: false,
+                items: t.items.map((text) => ({ id: uid(), text, done: false })),
+              });
+              persistLists();
+              renderLists();
+            },
+          })
+        );
+      }
+      templateRow.appendChild(chips);
+    }
+
+    function renderLists() {
+      listsHolder.innerHTML = '';
+      if (lists.length === 0) {
+        listsHolder.appendChild(
+          el('div', { class: 'card' }, [
+            el('p', { class: 'muted small', text: 'No lists yet. Create one below, or tap a template to get a head start.' }),
+          ])
+        );
+      }
+      for (const list of lists) {
+        listsHolder.appendChild(renderOneList(list));
+      }
+      renderTemplateChips();
+    }
+
+    function renderOneList(list) {
+      const card = el('div', { class: 'card list-card' });
+      const done = list.items.filter((i) => i.done).length;
+
+      const header = el('div', { class: 'list-head' }, [
+        el('button', {
+          class: 'list-toggle',
+          onClick: () => {
+            list.collapsed = !list.collapsed;
+            persistLists();
+            renderLists();
+          },
+        }, [
+          el('span', { class: 'list-caret', text: list.collapsed ? '\u25b8' : '\u25be' }),
+          el('span', { class: 'list-name', text: list.name }),
+          el('span', { class: 'list-count muted small', text: `${done}/${list.items.length}` }),
+        ]),
+        el('button', {
+          class: 'list-delete',
+          'aria-label': 'Delete list',
+          text: '\u2715',
+          onClick: () => {
+            if (confirm(`Delete the \u201c${list.name}\u201d list?`)) {
+              lists = lists.filter((l) => l.id !== list.id);
+              persistLists();
+              renderLists();
+            }
+          },
+        }),
+      ]);
+      card.appendChild(header);
+
+      if (list.collapsed) return card;
+
+      const body = el('div', { class: 'list-body' });
+
+      // items
+      for (const item of list.items) {
+        const cb = el('input', {
           type: 'checkbox',
-          checked: q.answered ? 'checked' : null,
+          checked: item.done ? 'checked' : null,
           onChange: (e) => {
-            q.answered = e.target.checked;
-            persist();
-            label.classList.toggle('done', q.answered);
+            item.done = e.target.checked;
+            persistLists();
+            txt.classList.toggle('done', item.done);
+            count.textContent = `${list.items.filter((i) => i.done).length}/${list.items.length}`;
           },
         });
-        const label = el('span', {
-          class: 'entry-label' + (q.answered ? ' done' : ''),
-          text: q.text,
-        });
-        listEl.appendChild(
+        const txt = el('span', { class: 'entry-label' + (item.done ? ' done' : ''), text: item.text });
+        const count = header.querySelector('.list-count');
+        body.appendChild(
           el('div', { class: 'entry-row' }, [
-            checkbox,
-            label,
+            cb,
+            txt,
             el('button', {
               class: 'entry-delete',
-              'aria-label': 'Delete',
+              'aria-label': 'Delete item',
               text: '\u00d7',
-              onClick: async () => {
-                questions = questions.filter((x) => x.id !== q.id);
-                await persist();
-                renderList();
+              onClick: () => {
+                list.items = list.items.filter((i) => i.id !== item.id);
+                persistLists();
+                renderLists();
               },
             }),
           ])
         );
+      }
+
+      // add item
+      const addInput = el('input', {
+        type: 'text',
+        class: 'food-search list-add-input',
+        placeholder: 'Add an item\u2026',
+        autocomplete: 'off',
       });
+      const addBtn = el('button', { class: 'secondary compact', text: 'Add' });
+      function addItem() {
+        const text = addInput.value.trim();
+        if (!text) return;
+        list.items.push({ id: uid(), text, done: false });
+        addInput.value = '';
+        persistLists();
+        renderLists();
+      }
+      addBtn.addEventListener('click', addItem);
+      addInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') addItem();
+      });
+      body.appendChild(el('div', { class: 'q-input-row list-add-row' }, [addInput, addBtn]));
+
+      card.appendChild(body);
+      return card;
     }
 
-    function addQuestion(text) {
-      const trimmed = text.trim();
+    function createNamed(name) {
+      const trimmed = name.trim();
       if (!trimmed) return;
-      questions.push({ id: Date.now() + '-' + Math.random().toString(36).slice(2, 7), text: trimmed, answered: false });
-      persist();
-      renderList();
+      lists.unshift({ id: uid(), name: trimmed, collapsed: false, items: [] });
+      persistLists();
+      renderLists();
     }
-
-    addBtn.addEventListener('click', () => {
-      addQuestion(input.value);
-      input.value = '';
-      input.focus();
+    newNameBtn.addEventListener('click', () => {
+      createNamed(newNameInput.value);
+      newNameInput.value = '';
     });
-    input.addEventListener('keydown', (e) => {
+    newNameInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
-        addQuestion(input.value);
-        input.value = '';
+        createNamed(newNameInput.value);
+        newNameInput.value = '';
       }
     });
 
-    for (const s of suggestions) {
-      suggWrap.appendChild(
-        el('button', {
-          class: 'log-chip tone-neutral',
-          text: '+ ' + s,
-          onClick: () => addQuestion(s),
-        })
-      );
-    }
-
-    Store.getSetting('doctorQuestions').then((saved) => {
-      questions = Array.isArray(saved) ? saved : [];
-      renderList();
-    });
+    Promise.all([Store.getSetting('userLists'), Store.getSetting('userNotes')]).then(
+      ([savedLists, savedNotes]) => {
+        lists = Array.isArray(savedLists) ? savedLists : [];
+        notes = typeof savedNotes === 'string' ? savedNotes : '';
+        notesArea.value = notes;
+        renderLists();
+      }
+    );
   }
 
   function renderFoodView(container) {
     const wrap = el('div', { class: 'wrap' }, [viewHeader('Can I eat this?')]);
+    wrap.appendChild(
+      el('div', { class: 'callout callout-warn food-disclaimer' }, [
+        document.createTextNode(
+          'General guidance only \u2014 always follow the advice of your doctor or ' +
+          'midwife, who knows your pregnancy. Recommendations can vary by country ' +
+          'and your own health.'
+        ),
+      ])
+    );
     const input = el('input', {
       type: 'search',
       class: 'food-search',
@@ -1478,7 +1825,9 @@
             document.createTextNode(item.safeWhen),
           ])
         : null,
-      item.source ? el('p', { class: 'muted small', text: `\u2014 ${item.source}` }) : null,
+      item.source
+        ? el('p', { class: 'muted small food-source', text: `Source: ${expandSource(item.source)}` })
+        : null,
     ]);
     details.style.display = 'none';
 
@@ -1505,7 +1854,18 @@
   }
 
   function renderSettingsView(container) {
-    const wrap = el('div', { class: 'wrap' }, [viewHeader('Settings')]);
+    const backHeader = el('header', { class: 'app-header tool-header' }, [
+      el('button', {
+        class: 'back-btn',
+        text: '\u2039 Back',
+        onClick: () => {
+          state.view = state.prevView || 'week';
+          renderApp();
+        },
+      }),
+      el('h1', { class: 'app-title', text: 'Settings' }),
+    ]);
+    const wrap = el('div', { class: 'wrap' }, [backHeader]);
 
     const unitToggle = (label, isImperial) =>
       el('button', {
@@ -1526,6 +1886,45 @@
           unitToggle('Metric (kg, cm)', false),
           unitToggle('Imperial (lb, in)', true),
         ]),
+      ])
+    );
+
+    // Baby name + sex
+    const nameField = el('input', {
+      type: 'text',
+      placeholder: 'Baby\u2019s name or nickname',
+      autocomplete: 'off',
+      value: state.babyName || null,
+    });
+    const genderSeg = el('div', { class: 'segmented gender-seg' });
+    function persistBaby() {
+      Store.setSetting('baby', { name: state.babyName, gender: state.gender });
+    }
+    for (const [key, label] of [['girl', 'Girl'], ['boy', 'Boy'], ['surprise', 'Surprise']]) {
+      const b = el('button', {
+        class: 'seg-btn' + (state.gender === key ? ' active' : ''),
+        text: label,
+        onClick: () => {
+          state.gender = key;
+          [...genderSeg.children].forEach((c) => c.classList.toggle('active', c.dataset.g === key));
+          persistBaby();
+        },
+      });
+      b.dataset.g = key;
+      genderSeg.appendChild(b);
+    }
+    nameField.addEventListener('input', () => {
+      state.babyName = nameField.value.trim();
+    });
+    nameField.addEventListener('blur', persistBaby);
+
+    wrap.appendChild(
+      el('div', { class: 'card' }, [
+        el('h3', { class: 'card-title', text: 'Baby' }),
+        el('label', { class: 'field-label', text: 'Name (used throughout the app)' }),
+        nameField,
+        el('label', { class: 'field-label', text: 'Sex' }),
+        genderSeg,
       ])
     );
 
@@ -1590,9 +1989,17 @@
           el('a', { class: 'link-row', href: 'privacy.html' }, ['Privacy policy']),
           el('a', { class: 'link-row', href: 'terms.html' }, ['Terms of use']),
           el('a', { class: 'link-row', href: 'disclaimer.html' }, ['Medical disclaimer']),
+          el('a', {
+            class: 'link-row',
+            href: 'https://github.com/dwdane/bloom-pwa/',
+            target: '_blank',
+            rel: 'noopener',
+          }, ['View the source on GitHub (open source)']),
         ]),
       ])
     );
+
+    wrap.appendChild(installCard());
 
     wrap.appendChild(
       el('p', {
@@ -1604,10 +2011,52 @@
     container.appendChild(wrap);
   }
 
+  // Reusable collapsible "how to install" instructions, used on the welcome
+  // screen (recipients open a link, not an app store) and in Settings.
+  function installCard() {
+    const body = el('div', { class: 'collapsible-body' }, [
+      el('p', { class: 'chip-group-title', text: 'iPhone or iPad (use Safari)' }),
+      el('ul', { class: 'relief-list' }, [
+        el('li', { text: 'Open this page in Safari, then tap the Share button (the square with an upward arrow).' }),
+        el('li', { text: 'Scroll down and tap \u201cAdd to Home Screen,\u201d then tap Add.' }),
+        el('li', { text: 'Open Bloom from its new home-screen icon.' }),
+      ]),
+      el('p', { class: 'chip-group-title', text: 'Android (use Chrome)' }),
+      el('ul', { class: 'relief-list' }, [
+        el('li', { text: 'Open this page in Chrome and tap the \u22ee menu.' }),
+        el('li', { text: 'Tap \u201cInstall app\u201d (or \u201cAdd to Home screen\u201d) and confirm.' }),
+      ]),
+      el('p', { class: 'chip-group-title', text: 'Computer (Chrome or Edge)' }),
+      el('ul', { class: 'relief-list' }, [
+        el('li', { text: 'Click the install icon in the address bar, or use the browser menu \u2192 Install Bloom.' }),
+      ]),
+      el('p', { class: 'muted small', text: 'Installing keeps your data safer on iPhone and lets Bloom work offline.' }),
+    ]);
+    body.style.display = 'none';
+    const toggle = el('button', {
+      class: 'collapsible-toggle',
+      text: 'How to install Bloom as an app  \u25be',
+      onClick: () => {
+        const open = body.style.display !== 'none';
+        body.style.display = open ? 'none' : 'block';
+        toggle.textContent = open
+          ? 'How to install Bloom as an app  \u25be'
+          : 'How to install Bloom as an app  \u25b4';
+      },
+    });
+    return el('div', { class: 'card collapsible' }, [toggle, body]);
+  }
+
   async function boot() {
     const dating = await Store.getSetting('dating');
     const units = await Store.getSetting('units');
-    if (units === 'imperial') state.imperial = true;
+    const baby = await Store.getSetting('baby');
+    if (units) state.imperial = units === 'imperial';
+    if (baby) {
+      state.babyName = baby.name || '';
+      state.gender = baby.gender || 'surprise';
+    }
+    state.logDate = todayISO();
 
     if (dating && (dating.lmp || dating.ultrasoundDueDate)) {
       state.dating.lmp = dating.lmp ? new Date(dating.lmp) : null;
@@ -1615,6 +2064,7 @@
         ? new Date(dating.ultrasoundDueDate)
         : null;
       renderApp();
+      maybeCelebrateNewWeek();
     } else {
       renderSetup();
     }

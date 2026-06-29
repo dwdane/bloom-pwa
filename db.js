@@ -112,6 +112,20 @@ const Store = (() => {
     });
   }
 
+  // Entries belonging to a given day (ISO 'YYYY-MM-DD'). Matches an explicit
+  // entry.date, or falls back to the creation day for older entries.
+  async function entriesForDate(dateIso) {
+    const all = await allEntries();
+    return all.filter((e) => {
+      const d = e.date || (e.createdAt ? new Date(e.createdAt) : null);
+      if (!d) return false;
+      if (typeof d === 'string') return d === dateIso;
+      const p = (n) => String(n).padStart(2, '0');
+      const iso = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+      return iso === dateIso;
+    });
+  }
+
   // Entries of one kind, sorted oldest-first by creation time (for charts).
   async function entriesOfKind(kind) {
     const s = await store(ENTRIES, 'readonly');
@@ -138,6 +152,7 @@ const Store = (() => {
     addEntry,
     deleteEntry,
     entriesForWeek,
+    entriesForDate,
     allEntries,
     entriesOfKind,
   };

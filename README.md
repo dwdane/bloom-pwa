@@ -18,28 +18,25 @@ lightweight web companion to the native Bloom app.
 
 ## What Bloom does
 
-- **Week view** — a friendly size comparison, due-date countdown, what's
-  developing for baby, a tuck-away "your body this week," encouragement, and
-  rotating facts with sources. Browse any week.
-- **Log** — record weight and bump size, and tap to log feelings and symptoms. A
-  weekly summary highlights the good moments; gentle "things that may help"
-  suggestions appear for symptoms you log; you can review and delete entries; and
-  collapsible trends show weight, bump, and how you've been feeling over time.
-  Includes guidance on what early movements feel like and how to measure your
-  bump at home.
-- **Tools** — a set of practical utilities:
-  - *Contraction timer* — time contractions and see how close together they are,
-    with plain guidance and clear "when to call" advice.
-  - *Kick counter* — count baby's movements toward ten, with guidance on what to
-    expect and when to contact your provider.
-  - *Birth plan* — build your preferences across labor, delivery, and newborn
-    care, plus a hospital-bag checklist.
-  - *Questions for your doctor* — jot down and check off questions for your next
-    appointment.
-- **Food** — a "Can I eat this?" search covering common foods and drinks,
-  including cooked-vs-raw and pasteurized-vs-unpasteurized distinctions, with the
-  reasoning and source for each.
-- **Settings** — switch between metric and imperial, and edit your dates.
+- **Week view** — a friendly size comparison (with your baby's name and an
+  "it's a girl/boy" touch once set), a calendar day strip showing where you are
+  in the week, a due-date countdown, what's developing for baby, a tuck-away
+  "your body this week," encouragement, and rotating facts with sources. Browse
+  any week, and the first time you reach a new week, a little celebration.
+- **Log** — pick any day on the calendar strip and log your feelings, symptoms
+  (each with its own emoji), weight, and bump size for that day. A daily summary
+  highlights the good moments, gentle "things that may help" suggestions appear
+  for symptoms, you can review and delete a day's entries, and collapsible trends
+  show weight, bump, and how you've been feeling over time.
+- **Tools** — a contraction timer and a kick counter, each with plain guidance
+  and clear "when to call your provider" advice.
+- **Lists** — flexible, named, collapsible checklists plus a free-notes pad.
+  Start from generous templates (hospital bag, birth preferences, doctor
+  questions, registry, nursery, postpartum) or build your own; add, check off,
+  and delete freely.
+- **Food** — a "Can I eat this?" search covering common foods and drinks, with a
+  reminder to follow your provider's advice and full source attributions.
+- **Settings** (top-right gear) — units, your dates, and your baby's name and sex.
 - **Works offline** and installs to your home screen like a native app.
 
 ---
@@ -137,14 +134,14 @@ Open `http://127.0.0.1:8000`.
 | `index.html` | App shell |
 | `styles.css` | Styling (mauve theme) |
 | `weekContent.js` | Week 4–40 content |
-| `foodDatabase.js` | Food-safety entries + search |
-| `logOptions.js` | Feeling/symptom vocabulary |
+| `foodDatabase.js` | Food-safety entries, search, source names |
+| `logOptions.js` | Feeling/symptom vocabulary + emoji |
 | `symptomRelief.js` | Symptom relief tips + movement guidance |
-| `birthPlan.js` | Birth-plan template + hospital-bag list |
+| `listTemplates.js` | Starter templates for the Lists tab |
 | `gestational.js` | Pregnancy dating math |
 | `charts.js` | Canvas trend + bar charts |
-| `db.js` | IndexedDB layer |
-| `app.js` | Views, tools, and navigation |
+| `db.js` | IndexedDB layer (day- and week-scoped queries) |
+| `app.js` | Views, daily tracking, tools, and navigation |
 | `sw.js` | Service worker (offline) |
 | `manifest.json`, `icon-*.png` | Install assets |
 | `privacy.html`, `terms.html`, `disclaimer.html` | Legal pages |

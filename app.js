@@ -11,7 +11,25 @@
     imperial: false,
     view: 'week',
     viewWeek: null,
+    tool: null, // within Tools: 'contraction' | 'kick' | 'birthplan' | 'questions'
   };
+
+  // Live timers (contraction/kick displays) that must be stopped when the view
+  // is torn down, so they don't fire against removed DOM nodes.
+  let activeIntervals = [];
+  function trackInterval(id) {
+    activeIntervals.push(id);
+    return id;
+  }
+  function clearActiveIntervals() {
+    activeIntervals.forEach(clearInterval);
+    activeIntervals = [];
+  }
+
+  // In-progress tool state, kept at module scope so navigating away and back
+  // resumes rather than losing a contraction or kick session mid-count.
+  let contractionStart = null;
+  let kickSession = null;
 
   function el(tag, props = {}, children = []) {
     const node = document.createElement(tag);
@@ -124,6 +142,7 @@
         onClick: () => {
           if (state.view !== view) {
             state.view = view;
+            state.tool = null;
             renderApp();
           }
         },
@@ -139,18 +158,19 @@
   }
 
   function renderApp() {
+    clearActiveIntervals();
     root.innerHTML = '';
     const content = el('div', { class: 'content' });
     if (state.view === 'week') renderWeekView(content);
     else if (state.view === 'log') renderLogView(content);
-    else if (state.view === 'trends') renderTrendsView(content);
+    else if (state.view === 'tools') renderToolsView(content);
     else if (state.view === 'food') renderFoodView(content);
     else if (state.view === 'settings') renderSettingsView(content);
 
     const nav = el('nav', { class: 'tabbar' }, [
       navItem('week', 'Week', '<rect x="3" y="4" width="18" height="18" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="16" y1="2" x2="16" y2="6"/>'),
       navItem('log', 'Log', '<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>'),
-      navItem('trends', 'Trends', '<line x1="3" y1="21" x2="21" y2="21"/><polyline points="4 15 9 9 13 13 20 5"/>'),
+      navItem('tools', 'Tools', '<path d="M14.7 6.3a4 4 0 0 1-5.4 5.3L4 17v3h3l5.4-5.3a4 4 0 0 1 5.3-5.4l-2.6 2.6-2-2 2.6-2.6Z"/>'),
       navItem('food', 'Food', '<path d="M3 2v7a3 3 0 0 0 6 0V2"/><line x1="6" y1="9" x2="6" y2="22"/><path d="M17 2c-1.5 1-2 3-2 5s.5 4 2 5v10"/>'),
       navItem('settings', 'Settings', '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 8 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H2a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 3.6 8a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H8a1.65 1.65 0 0 0 1-1.51V2a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V8a1.65 1.65 0 0 0 1.51 1H22a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/>'),
     ]);
@@ -443,7 +463,33 @@
       }
       feelingsCard.appendChild(group);
     }
+    // movement note + a relief disclosure live with feelings
+    const moveBody = el('div', { class: 'collapsible-body' }, [
+      el('p', { text: MOVEMENT_INFO.whatItFeelsLike }),
+      el('p', { class: 'muted small', html: 'Tracking movements in detail? The <strong>Kick counter</strong> in Tools has guidance and a counter.' }),
+    ]);
+    moveBody.style.display = 'none';
+    const moveToggle = el('button', {
+      class: 'measure-help-toggle',
+      text: 'What do baby\u2019s first movements feel like?  \u25be',
+      onClick: () => {
+        const open = moveBody.style.display !== 'none';
+        moveBody.style.display = open ? 'none' : 'block';
+        moveToggle.textContent = open
+          ? 'What do baby\u2019s first movements feel like?  \u25be'
+          : 'What do baby\u2019s first movements feel like?  \u25b4';
+      },
+    });
+    feelingsCard.appendChild(el('div', { class: 'measure-help-wrap' }, [moveToggle, moveBody]));
     wrap.appendChild(feelingsCard);
+
+    // --- things that may help (relief tips for this week's tough symptoms) ---
+    const reliefCard = el('div', { class: 'card' }, [
+      el('h3', { class: 'card-title', text: 'Things that may help' }),
+    ]);
+    const reliefBody = el('div', {});
+    reliefCard.appendChild(reliefBody);
+    wrap.appendChild(reliefCard);
 
     // --- measurements (weight + bump): latest value + add; charts live in Trends ---
     const measureCard = (opts) => {
@@ -477,6 +523,7 @@
       card.appendChild(latestEl);
       card.appendChild(note);
       if (opts.help) card.appendChild(opts.help());
+      card.appendChild(trendDisclosure(opts));
 
       Store.entriesOfKind(opts.kind).then((entries) => {
         if (entries.length === 0) {
@@ -489,8 +536,8 @@
           opts.fromStored(last.value).toFixed(1) + ' ' + opts.unit();
         note.textContent =
           entries.length < 2
-            ? 'Log once more to start a trend (see the Trends tab).'
-            : opts.encourage + ' See the Trends tab for your chart.';
+            ? 'Log once more to start a trend.'
+            : opts.encourage;
       });
 
       return card;
@@ -563,6 +610,9 @@
     recentCard.appendChild(recentList);
     wrap.appendChild(recentCard);
 
+    // folded-in trend: how you've been feeling over time (collapsible)
+    wrap.appendChild(feelingsTrendCard());
+
     function describeEntry(e) {
       if (e.kind === 'weight' && e.value != null) {
         return fromStoredWeight(e.value).toFixed(1) + ' ' + weightUnit() + ' \u00b7 weight';
@@ -603,6 +653,48 @@
           ])
         );
 
+        // relief tips for distinct symptoms/feelings logged this week that have advice
+        reliefBody.innerHTML = '';
+        const labels = [];
+        for (const e of feelingSymptom) {
+          if (e.label && !labels.includes(e.label) && reliefFor(e.label)) labels.push(e.label);
+        }
+        if (labels.length === 0) {
+          reliefBody.appendChild(
+            el('p', {
+              class: 'muted small',
+              text: 'Log how you\u2019re feeling above, and any gentle ideas that might help will show here.',
+            })
+          );
+        } else {
+          for (const label of labels) {
+            const r = reliefFor(label);
+            const body = el('div', { class: 'collapsible-body' });
+            const ul = el('ul', { class: 'relief-list' });
+            for (const tip of r.tips) ul.appendChild(el('li', { text: tip }));
+            body.appendChild(ul);
+            if (r.whenToCall) {
+              body.appendChild(
+                el('p', { class: 'relief-call small' }, [
+                  el('strong', { text: 'When to call: ' }),
+                  document.createTextNode(r.whenToCall),
+                ])
+              );
+            }
+            body.style.display = 'none';
+            const toggle = el('button', {
+              class: 'relief-toggle',
+              text: label + '  \u25be',
+              onClick: () => {
+                const open = body.style.display !== 'none';
+                body.style.display = open ? 'none' : 'block';
+                toggle.textContent = open ? label + '  \u25be' : label + '  \u25b4';
+              },
+            });
+            reliefBody.appendChild(el('div', { class: 'relief-item' }, [toggle, body]));
+          }
+        }
+
         // recent list (newest first)
         const sorted = entries
           .slice()
@@ -638,42 +730,49 @@
   }
 
   // ---------------------------------------------------------------------------
-  // Trends view (everything over time)
+  // Shared chart helpers (used by the folded-in trends in the Log tab)
   // ---------------------------------------------------------------------------
 
-  function renderTrendsView(container) {
-    const wrap = el('div', { class: 'wrap' }, [viewHeader('Trends')]);
-    container.appendChild(wrap);
-
-    const accent =
+  function accentColor() {
+    return (
       getComputedStyle(document.documentElement)
         .getPropertyValue('--accent')
-        .trim() || '#b5739d';
+        .trim() || '#b5739d'
+    );
+  }
 
-    // Weight + bump line charts over the whole journey.
-    const lineCard = (opts) => {
-      const card = el('div', { class: 'card' }, [
-        el('h3', { class: 'card-title', text: opts.title }),
-      ]);
-      const canvas = el('canvas', { class: 'chart-canvas tall' });
-      const note = el('p', { class: 'muted small' });
-      card.appendChild(canvas);
-      card.appendChild(note);
+  function getCssColor(varName, fallback) {
+    const v = getComputedStyle(document.documentElement)
+      .getPropertyValue(varName)
+      .trim();
+    return v || fallback;
+  }
 
+  // A collapsible line-chart card for a measurement kind (weight/bump).
+  function trendDisclosure(opts) {
+    const body = el('div', { class: 'collapsible-body' });
+    body.style.display = 'none';
+    const canvas = el('canvas', { class: 'chart-canvas' });
+    const note = el('p', { class: 'muted small' });
+    body.appendChild(canvas);
+    body.appendChild(note);
+
+    let drawn = false;
+    function draw() {
       Store.entriesOfKind(opts.kind).then((entries) => {
         if (entries.length < 2) {
           canvas.style.display = 'none';
           note.textContent =
             entries.length === 0
-              ? `No ${opts.noun} logged yet. Add entries from the Log tab.`
-              : `Log ${opts.noun} once more to see a trend line.`;
+              ? 'No entries yet.'
+              : 'Log once more to see a trend line.';
           return;
         }
         const first = entries[0];
         const last = entries[entries.length - 1];
         const change = opts.fromStored(last.value) - opts.fromStored(first.value);
         const sign = change >= 0 ? '+' : '';
-        note.textContent = `${opts.fromStored(last.value).toFixed(1)} ${opts.unit()} now \u00b7 ${sign}${change.toFixed(1)} ${opts.unit()} since you started logging.`;
+        note.textContent = `${sign}${change.toFixed(1)} ${opts.unit()} since you started logging.`;
         const points = entries.map((e) => ({
           x: e.createdAt,
           y: opts.fromStored(e.value),
@@ -682,37 +781,36 @@
         requestAnimationFrame(() =>
           drawLineChart(canvas, points, {
             formatValue: (v) => Math.round(v) + '',
-            accent,
+            accent: accentColor(),
           })
         );
       });
-      return card;
-    };
+    }
 
-    wrap.appendChild(
-      lineCard({
-        title: 'Weight over time',
-        kind: 'weight',
-        noun: 'weight',
-        unit: weightUnit,
-        fromStored: fromStoredWeight,
-      })
-    );
-    wrap.appendChild(
-      lineCard({
-        title: 'Bump size over time',
-        kind: 'bump',
-        noun: 'a bump measurement',
-        unit: bumpUnit,
-        fromStored: fromStoredBump,
-      })
-    );
+    const toggle = el('button', {
+      class: 'measure-help-toggle',
+      text: 'Show trend  \u25be',
+      onClick: () => {
+        const open = body.style.display !== 'none';
+        body.style.display = open ? 'none' : 'block';
+        toggle.textContent = open ? 'Show trend  \u25be' : 'Hide trend  \u25b4';
+        if (!open && !drawn) {
+          drawn = true;
+          draw();
+        } else if (!open) {
+          draw();
+        }
+      },
+    });
+    return el('div', { class: 'trend-disclosure' }, [toggle, body]);
+  }
 
-    // Feelings & symptoms over time: stacked bars per week (good / neutral / tough).
-    const feelCard = el('div', { class: 'card' }, [
-      el('h3', { class: 'card-title', text: 'How you\u2019ve been feeling' }),
-    ]);
-    const feelCanvas = el('canvas', { class: 'chart-canvas tall' });
+  // A collapsible "how you've been feeling over time" stacked-bar card.
+  function feelingsTrendCard() {
+    const card = el('div', { class: 'card collapsible' });
+    const body = el('div', { class: 'collapsible-body' });
+    body.style.display = 'none';
+    const canvas = el('canvas', { class: 'chart-canvas' });
     const legend = el('div', { class: 'chart-legend' }, [
       el('span', { class: 'legend-item' }, [
         el('span', { class: 'legend-dot tone-good' }),
@@ -727,11 +825,10 @@
         document.createTextNode('Tough'),
       ]),
     ]);
-    const feelNote = el('p', { class: 'muted small' });
-    feelCard.appendChild(feelCanvas);
-    feelCard.appendChild(legend);
-    feelCard.appendChild(feelNote);
-    wrap.appendChild(feelCard);
+    const note = el('p', { class: 'muted small' });
+    body.appendChild(canvas);
+    body.appendChild(legend);
+    body.appendChild(note);
 
     const toneColors = {
       good: getCssColor('--good', '#6bbf73'),
@@ -739,56 +836,604 @@
       tough: '#d9a066',
     };
 
-    Store.allEntries().then((all) => {
-      const fs = all.filter((e) => e.kind === 'feeling' || e.kind === 'symptom');
-      if (fs.length === 0) {
-        feelCanvas.style.display = 'none';
-        legend.style.display = 'none';
-        feelNote.textContent =
-          'Once you log how you\u2019re feeling, your weeks will show here.';
+    function draw() {
+      Store.allEntries().then((all) => {
+        const fs = all.filter((e) => e.kind === 'feeling' || e.kind === 'symptom');
+        if (fs.length === 0) {
+          canvas.style.display = 'none';
+          legend.style.display = 'none';
+          note.textContent = 'Once you log how you\u2019re feeling, your weeks will show here.';
+          return;
+        }
+        canvas.style.display = 'block';
+        legend.style.display = 'flex';
+        const byWeek = {};
+        for (const e of fs) {
+          const wk = e.week != null ? e.week : 0;
+          if (!byWeek[wk]) byWeek[wk] = { good: 0, neutral: 0, tough: 0 };
+          byWeek[wk][e.label ? toneForLabel(e.label) : 'neutral']++;
+        }
+        const weeks = Object.keys(byWeek).map(Number).sort((a, b) => a - b);
+        const groups = weeks.map((wk) => ({
+          label: `${wk}`,
+          segments: [
+            { value: byWeek[wk].good, color: toneColors.good },
+            { value: byWeek[wk].neutral, color: toneColors.neutral },
+            { value: byWeek[wk].tough, color: toneColors.tough },
+          ],
+        }));
+        const good = fs.filter((e) => e.label && toneForLabel(e.label) === 'good').length;
+        note.textContent = `${good} good moment${good === 1 ? '' : 's'} across ${weeks.length} week${weeks.length === 1 ? '' : 's'}.`;
+        requestAnimationFrame(() => drawStackedBars(canvas, groups));
+      });
+    }
+
+    const toggle = el('button', {
+      class: 'collapsible-toggle',
+      text: 'How you\u2019ve been feeling over time  \u25be',
+      onClick: () => {
+        const open = body.style.display !== 'none';
+        body.style.display = open ? 'none' : 'block';
+        toggle.textContent = open
+          ? 'How you\u2019ve been feeling over time  \u25be'
+          : 'How you\u2019ve been feeling over time  \u25b4';
+        if (!open) draw();
+      },
+    });
+    card.appendChild(toggle);
+    card.appendChild(body);
+    return card;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Tools tab: hub + individual tools
+  // ---------------------------------------------------------------------------
+
+  function renderToolsView(container) {
+    if (state.tool === 'contraction') return renderContractionTimer(container);
+    if (state.tool === 'kick') return renderKickCounter(container);
+    if (state.tool === 'birthplan') return renderBirthPlan(container);
+    if (state.tool === 'questions') return renderDoctorQuestions(container);
+
+    const tools = [
+      { key: 'contraction', title: 'Contraction timer', desc: 'Time contractions and see how close together they are.' },
+      { key: 'kick', title: 'Kick counter', desc: 'Count baby\u2019s movements, with guidance on what to expect.' },
+      { key: 'birthplan', title: 'Birth plan', desc: 'Build your preferences and a hospital-bag checklist.' },
+      { key: 'questions', title: 'Questions for your doctor', desc: 'Jot down questions for your next appointment.' },
+    ];
+
+    const list = el('div', { class: 'tool-list' });
+    for (const t of tools) {
+      list.appendChild(
+        el('button', {
+          class: 'tool-card',
+          onClick: () => {
+            state.tool = t.key;
+            renderApp();
+          },
+        }, [
+          el('div', { class: 'tool-card-title', text: t.title }),
+          el('div', { class: 'tool-card-desc muted small', text: t.desc }),
+        ])
+      );
+    }
+
+    container.appendChild(el('div', { class: 'wrap' }, [viewHeader('Tools'), list]));
+  }
+
+  function toolHeader(title) {
+    return el('header', { class: 'app-header tool-header' }, [
+      el('button', {
+        class: 'back-btn',
+        text: '\u2039 Tools',
+        onClick: () => {
+          state.tool = null;
+          renderApp();
+        },
+      }),
+      el('h1', { class: 'app-title', text: title }),
+    ]);
+  }
+
+  function fmtClock(totalSeconds) {
+    const s = Math.max(0, Math.floor(totalSeconds));
+    const m = Math.floor(s / 60);
+    const r = s % 60;
+    return `${m}:${String(r).padStart(2, '0')}`;
+  }
+
+  // --- Contraction timer ---
+  function renderContractionTimer(container) {
+    const wrap = el('div', { class: 'wrap' }, [toolHeader('Contraction timer')]);
+    container.appendChild(wrap);
+
+    const bigButton = el('button', { class: 'timer-button' });
+    const elapsedLabel = el('div', { class: 'timer-elapsed' });
+    const sinceLabel = el('div', { class: 'muted small timer-since' });
+
+    const timerCard = el('div', { class: 'card timer-card' }, [
+      elapsedLabel,
+      bigButton,
+      sinceLabel,
+    ]);
+    wrap.appendChild(timerCard);
+
+    const statsCard = el('div', { class: 'card' }, [
+      el('h3', { class: 'card-title', text: 'Recent contractions' }),
+    ]);
+    const statsSummary = el('div', { class: 'timer-summary' });
+    const listEl = el('div', { class: 'entry-list' });
+    statsCard.appendChild(statsSummary);
+    statsCard.appendChild(listEl);
+    wrap.appendChild(statsCard);
+
+    // Guidance
+    wrap.appendChild(
+      el('div', { class: 'card guidance' }, [
+        el('h3', { class: 'card-title', text: 'How to use this' }),
+        el('p', { text: 'Tap Start when a contraction begins and Stop when it eases. Bloom records how long each one lasts and how far apart they are (start to start).' }),
+        el('p', { html: 'A common full-term guideline is <strong>5-1-1</strong>: contractions about 5 minutes apart, each lasting about 1 minute, for at least 1 hour. Your provider may give you different instructions \u2014 always follow theirs.' }),
+        el('div', { class: 'callout callout-warn' }, [
+          el('strong', { text: 'Call your provider ' }),
+          document.createTextNode(
+            'if your water breaks, you have bleeding, you notice reduced baby movement, or you have regular contractions before 37 weeks \u2014 don\u2019t wait for any pattern. This timer does not diagnose labor.'
+          ),
+        ]),
+      ])
+    );
+
+    function render() {
+      Store.entriesOfKind('contraction').then((all) => {
+        const sorted = all.slice().sort((a, b) => (b.startedAt || 0) - (a.startedAt || 0));
+
+        // summary over the last hour
+        const hourAgo = Date.now() - 3600000;
+        const recent = sorted.filter((c) => (c.startedAt || 0) >= hourAgo);
+        if (recent.length >= 2) {
+          const durs = recent.map((c) => c.durationSec).filter((n) => n != null);
+          const avgDur = durs.reduce((a, b) => a + b, 0) / durs.length;
+          const gaps = [];
+          for (let i = 0; i < recent.length - 1; i++) {
+            gaps.push((recent[i].startedAt - recent[i + 1].startedAt) / 1000);
+          }
+          const avgGap = gaps.reduce((a, b) => a + b, 0) / gaps.length;
+          statsSummary.textContent = `Last hour: ${recent.length} contractions, about ${fmtClock(avgGap)} apart, lasting ~${fmtClock(avgDur)}.`;
+        } else {
+          statsSummary.textContent = 'Time a few contractions to see your pattern.';
+        }
+
+        // list with frequency
+        listEl.innerHTML = '';
+        if (sorted.length === 0) {
+          listEl.appendChild(el('p', { class: 'muted small', text: 'No contractions recorded yet.' }));
+        } else {
+          sorted.slice(0, 12).forEach((c, i) => {
+            const next = sorted[i + 1];
+            const gap = next ? (c.startedAt - next.startedAt) / 1000 : null;
+            const time = new Date(c.startedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+            const parts = [`${fmtClock(c.durationSec)} long`];
+            if (gap != null) parts.push(`${fmtClock(gap)} apart`);
+            listEl.appendChild(
+              el('div', { class: 'entry-row' }, [
+                el('span', { class: 'entry-label', text: `${time} \u00b7 ${parts.join(' \u00b7 ')}` }),
+              ])
+            );
+          });
+        }
+
+        if (sorted.length > 0) {
+          listEl.appendChild(
+            el('button', {
+              class: 'secondary compact clear-btn',
+              text: 'Clear all',
+              onClick: async () => {
+                for (const c of all) await Store.deleteEntry(c.id);
+                render();
+              },
+            })
+          );
+        }
+      });
+    }
+
+    function paintButton() {
+      if (contractionStart) {
+        bigButton.textContent = 'Stop';
+        bigButton.classList.add('running');
+        sinceLabel.textContent = 'Contraction in progress\u2026';
+      } else {
+        bigButton.textContent = 'Start contraction';
+        bigButton.classList.remove('running');
+        elapsedLabel.textContent = '';
+      }
+    }
+
+    bigButton.addEventListener('click', async () => {
+      if (!contractionStart) {
+        contractionStart = Date.now();
+        paintButton();
+      } else {
+        const startedAt = contractionStart;
+        const endedAt = Date.now();
+        contractionStart = null;
+        await Store.addEntry({
+          kind: 'contraction',
+          startedAt,
+          endedAt,
+          durationSec: Math.round((endedAt - startedAt) / 1000),
+          week: currentWeek(),
+        });
+        paintButton();
+        render();
+      }
+    });
+
+    // live tick: elapsed during a contraction, and time since last otherwise
+    let lastStartedAt = null;
+    Store.entriesOfKind('contraction').then((all) => {
+      const sorted = all.slice().sort((a, b) => (b.startedAt || 0) - (a.startedAt || 0));
+      lastStartedAt = sorted.length ? sorted[0].startedAt : null;
+    });
+
+    trackInterval(
+      setInterval(() => {
+        if (contractionStart) {
+          elapsedLabel.textContent = fmtClock((Date.now() - contractionStart) / 1000);
+        } else if (lastStartedAt) {
+          sinceLabel.textContent = `${fmtClock((Date.now() - lastStartedAt) / 1000)} since last started`;
+        }
+      }, 1000)
+    );
+
+    paintButton();
+    render();
+  }
+
+  // --- Kick counter ---
+  function renderKickCounter(container) {
+    const wrap = el('div', { class: 'wrap' }, [toolHeader('Kick counter')]);
+    container.appendChild(wrap);
+
+    const TARGET = 10;
+    const countLabel = el('div', { class: 'timer-elapsed kick-count' });
+    const elapsedLabel = el('div', { class: 'muted small' });
+    const bigButton = el('button', { class: 'timer-button' });
+    const resetBtn = el('button', { class: 'secondary compact', text: 'Reset session' });
+
+    const card = el('div', { class: 'card timer-card' }, [
+      countLabel,
+      elapsedLabel,
+      bigButton,
+      resetBtn,
+    ]);
+    wrap.appendChild(card);
+
+    const resultCard = el('div', { class: 'card', style: 'display:none' });
+    wrap.appendChild(resultCard);
+
+    // Movement guidance
+    wrap.appendChild(
+      el('div', { class: 'card guidance' }, [
+        el('h3', { class: 'card-title', text: 'What movements feel like' }),
+        el('p', { text: MOVEMENT_INFO.whatItFeelsLike }),
+        el('h3', { class: 'card-title', text: 'When and how to count' }),
+        el('p', { text: MOVEMENT_INFO.whenToCount }),
+        el('p', { text: 'Tap the button each time you feel a movement. Reaching ' + TARGET + ' is a reassuring sign; most people get there well within two hours.' }),
+        el('div', { class: 'callout callout-warn' }, [
+          el('strong', { text: 'Important: ' }),
+          document.createTextNode(MOVEMENT_INFO.warning),
+        ]),
+      ])
+    );
+
+    const historyCard = el('div', { class: 'card' }, [
+      el('h3', { class: 'card-title', text: 'Past sessions' }),
+    ]);
+    const historyList = el('div', { class: 'entry-list' });
+    historyCard.appendChild(historyList);
+    wrap.appendChild(historyCard);
+
+    function renderHistory() {
+      Store.entriesOfKind('kickSession').then((all) => {
+        const sorted = all.slice().sort((a, b) => (b.completedAt || 0) - (a.completedAt || 0));
+        historyList.innerHTML = '';
+        if (sorted.length === 0) {
+          historyList.appendChild(el('p', { class: 'muted small', text: 'No sessions yet.' }));
+          return;
+        }
+        sorted.slice(0, 10).forEach((s) => {
+          const when = new Date(s.completedAt).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+          historyList.appendChild(
+            el('div', { class: 'entry-row' }, [
+              el('span', { class: 'entry-label', text: `${when} \u00b7 ${s.count} movements in ${fmtClock(s.durationSec)}` }),
+              el('button', {
+                class: 'entry-delete',
+                'aria-label': 'Delete',
+                text: '\u00d7',
+                onClick: async () => {
+                  await Store.deleteEntry(s.id);
+                  renderHistory();
+                },
+              }),
+            ])
+          );
+        });
+      });
+    }
+
+    function paint() {
+      const n = kickSession ? kickSession.times.length : 0;
+      countLabel.textContent = `${n} / ${TARGET}`;
+      bigButton.textContent = kickSession ? 'I felt a movement' : 'Start counting';
+      bigButton.classList.toggle('running', !!kickSession);
+      if (kickSession) {
+        elapsedLabel.textContent = fmtClock((Date.now() - kickSession.startedAt) / 1000) + ' elapsed';
+      } else {
+        elapsedLabel.textContent = '';
+      }
+    }
+
+    bigButton.addEventListener('click', async () => {
+      if (!kickSession) {
+        kickSession = { startedAt: Date.now(), times: [] };
+        resultCard.style.display = 'none';
+        paint();
         return;
       }
-      // group by week
-      const byWeek = {};
-      for (const e of fs) {
-        const wk = e.week != null ? e.week : 0;
-        if (!byWeek[wk]) byWeek[wk] = { good: 0, neutral: 0, tough: 0 };
-        const tone = e.label ? toneForLabel(e.label) : 'neutral';
-        byWeek[wk][tone]++;
+      kickSession.times.push(Date.now());
+      if (kickSession.times.length >= TARGET) {
+        const startedAt = kickSession.startedAt;
+        const completedAt = Date.now();
+        const durationSec = Math.round((completedAt - startedAt) / 1000);
+        await Store.addEntry({
+          kind: 'kickSession',
+          startedAt,
+          completedAt,
+          count: TARGET,
+          durationSec,
+          week: currentWeek(),
+        });
+        kickSession = null;
+        resultCard.style.display = 'block';
+        resultCard.innerHTML = '';
+        resultCard.appendChild(el('div', { class: 'summary-emoji', text: '\ud83d\udc63' }));
+        resultCard.appendChild(el('p', { class: 'summary-line', text: `You felt ${TARGET} movements in ${fmtClock(durationSec)}.` }));
+        resultCard.appendChild(el('p', { class: 'muted small', text: 'A lovely sign. Keep noticing your baby\u2019s usual pattern, and reach out to your provider any time movements drop or you\u2019re unsure.' }));
+        paint();
+        renderHistory();
+      } else {
+        paint();
       }
-      const weeks = Object.keys(byWeek)
-        .map(Number)
-        .sort((a, b) => a - b);
-      const groups = weeks.map((wk) => ({
-        label: `${wk}`,
-        segments: [
-          { value: byWeek[wk].good, color: toneColors.good },
-          { value: byWeek[wk].neutral, color: toneColors.neutral },
-          { value: byWeek[wk].tough, color: toneColors.tough },
-        ],
-      }));
-      const goodTotal = fs.filter(
-        (e) => e.label && toneForLabel(e.label) === 'good'
-      ).length;
-      feelNote.textContent = `${goodTotal} good moment${goodTotal === 1 ? '' : 's'} logged across ${weeks.length} week${weeks.length === 1 ? '' : 's'}. Bars show entries per week.`;
-      requestAnimationFrame(() => drawStackedBars(feelCanvas, groups));
     });
+
+    resetBtn.addEventListener('click', () => {
+      kickSession = null;
+      resultCard.style.display = 'none';
+      paint();
+    });
+
+    trackInterval(
+      setInterval(() => {
+        if (kickSession) {
+          elapsedLabel.textContent = fmtClock((Date.now() - kickSession.startedAt) / 1000) + ' elapsed';
+        }
+      }, 1000)
+    );
+
+    paint();
+    renderHistory();
+  }
+
+  // --- Birth plan ---
+  function renderBirthPlan(container) {
+    const wrap = el('div', { class: 'wrap' }, [toolHeader('Birth plan')]);
+    container.appendChild(wrap);
 
     wrap.appendChild(
       el('p', {
-        class: 'muted small disclaimer',
-        text:
-          'These charts are a personal keepsake of your own entries, not a ' +
-          'medical record or assessment.',
+        class: 'muted small section-intro',
+        text: 'A birth plan shares your preferences with your care team. It\u2019s a guide, not a guarantee \u2014 staying flexible on the day is normal and healthy.',
       })
     );
+
+    Promise.all([
+      Store.getSetting('birthPlan'),
+      Store.getSetting('birthPlanBag'),
+    ]).then(([savedPlan, savedBag]) => {
+      const plan = savedPlan || {};
+      const bag = savedBag || {};
+
+      const persistPlan = () => Store.setSetting('birthPlan', plan);
+      const persistBag = () => Store.setSetting('birthPlanBag', bag);
+
+      for (const section of BIRTH_PLAN_SECTIONS) {
+        const card = el('div', { class: 'card' }, [
+          el('h3', { class: 'card-title', text: section.title }),
+        ]);
+        if (!plan[section.key]) plan[section.key] = { selected: [], note: '' };
+        const entry = plan[section.key];
+
+        if (section.type === 'select') {
+          const group = el('div', { class: 'chip-group' });
+          for (const opt of section.options) {
+            const chip = el('button', {
+              class: 'plan-chip' + (entry.selected.includes(opt) ? ' selected' : ''),
+              text: opt,
+              onClick: () => {
+                const idx = entry.selected.indexOf(opt);
+                if (idx >= 0) entry.selected.splice(idx, 1);
+                else entry.selected.push(opt);
+                chip.classList.toggle('selected');
+                persistPlan();
+              },
+            });
+            group.appendChild(chip);
+          }
+          card.appendChild(group);
+        } else {
+          const ta = el('textarea', {
+            class: 'plan-textarea',
+            rows: '3',
+            placeholder: section.placeholder || '',
+          });
+          ta.value = entry.note || '';
+          ta.addEventListener('input', () => {
+            entry.note = ta.value;
+          });
+          ta.addEventListener('blur', persistPlan);
+          card.appendChild(ta);
+        }
+        wrap.appendChild(card);
+      }
+
+      // Hospital bag checklist
+      const bagCard = el('div', { class: 'card' }, [
+        el('h3', { class: 'card-title', text: 'Hospital bag checklist' }),
+      ]);
+      for (const group of HOSPITAL_BAG) {
+        bagCard.appendChild(el('p', { class: 'chip-group-title', text: group.group }));
+        for (const item of group.items) {
+          const id = group.group + '|' + item;
+          const row = el('label', { class: 'check-row' }, [
+            el('input', {
+              type: 'checkbox',
+              checked: bag[id] ? 'checked' : null,
+              onChange: (e) => {
+                bag[id] = e.target.checked;
+                persistBag();
+              },
+            }),
+            el('span', { text: item }),
+          ]);
+          bagCard.appendChild(row);
+        }
+      }
+      wrap.appendChild(bagCard);
+
+      wrap.appendChild(
+        el('p', {
+          class: 'muted small disclaimer',
+          text: 'Saved on this device as you go. Bring it to an appointment to talk through with your provider.',
+        })
+      );
+    });
   }
 
-  function getCssColor(varName, fallback) {
-    const v = getComputedStyle(document.documentElement)
-      .getPropertyValue(varName)
-      .trim();
-    return v || fallback;
+  // --- Doctor questions ---
+  function renderDoctorQuestions(container) {
+    const wrap = el('div', { class: 'wrap' }, [toolHeader('Questions for your doctor')]);
+    container.appendChild(wrap);
+
+    const input = el('input', {
+      type: 'text',
+      class: 'food-search',
+      placeholder: 'Add a question\u2026',
+      autocomplete: 'off',
+    });
+    const addBtn = el('button', { class: 'primary compact', text: 'Add' });
+    const inputRow = el('div', { class: 'q-input-row' }, [input, addBtn]);
+
+    const card = el('div', { class: 'card' }, [
+      el('h3', { class: 'card-title', text: 'Your questions' }),
+      inputRow,
+    ]);
+    const listEl = el('div', { class: 'entry-list' });
+    card.appendChild(listEl);
+    wrap.appendChild(card);
+
+    const suggestions = [
+      'Is my weight gain on track?',
+      'What foods or activities should I avoid now?',
+      'What symptoms should I call about?',
+      'When is my next scan or test?',
+      'What are my options for pain relief?',
+    ];
+    const suggCard = el('div', { class: 'card' }, [
+      el('h3', { class: 'card-title', text: 'Common questions to add' }),
+    ]);
+    const suggWrap = el('div', { class: 'chip-group' });
+    suggCard.appendChild(suggWrap);
+    wrap.appendChild(suggCard);
+
+    let questions = [];
+
+    function persist() {
+      return Store.setSetting('doctorQuestions', questions);
+    }
+
+    function renderList() {
+      listEl.innerHTML = '';
+      if (questions.length === 0) {
+        listEl.appendChild(el('p', { class: 'muted small', text: 'No questions yet. Add one above, or tap a suggestion.' }));
+        return;
+      }
+      questions.forEach((q) => {
+        const checkbox = el('input', {
+          type: 'checkbox',
+          checked: q.answered ? 'checked' : null,
+          onChange: (e) => {
+            q.answered = e.target.checked;
+            persist();
+            label.classList.toggle('done', q.answered);
+          },
+        });
+        const label = el('span', {
+          class: 'entry-label' + (q.answered ? ' done' : ''),
+          text: q.text,
+        });
+        listEl.appendChild(
+          el('div', { class: 'entry-row' }, [
+            checkbox,
+            label,
+            el('button', {
+              class: 'entry-delete',
+              'aria-label': 'Delete',
+              text: '\u00d7',
+              onClick: async () => {
+                questions = questions.filter((x) => x.id !== q.id);
+                await persist();
+                renderList();
+              },
+            }),
+          ])
+        );
+      });
+    }
+
+    function addQuestion(text) {
+      const trimmed = text.trim();
+      if (!trimmed) return;
+      questions.push({ id: Date.now() + '-' + Math.random().toString(36).slice(2, 7), text: trimmed, answered: false });
+      persist();
+      renderList();
+    }
+
+    addBtn.addEventListener('click', () => {
+      addQuestion(input.value);
+      input.value = '';
+      input.focus();
+    });
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        addQuestion(input.value);
+        input.value = '';
+      }
+    });
+
+    for (const s of suggestions) {
+      suggWrap.appendChild(
+        el('button', {
+          class: 'log-chip tone-neutral',
+          text: '+ ' + s,
+          onClick: () => addQuestion(s),
+        })
+      );
+    }
+
+    Store.getSetting('doctorQuestions').then((saved) => {
+      questions = Array.isArray(saved) ? saved : [];
+      renderList();
+    });
   }
 
   function renderFoodView(container) {

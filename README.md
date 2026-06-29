@@ -22,10 +22,20 @@ lightweight web companion to the native Bloom app.
   developing for baby, a tuck-away "your body this week," encouragement, and
   rotating facts with sources. Browse any week.
 - **Log** — record weight and bump size, and tap to log feelings and symptoms. A
-  weekly summary highlights the good moments, and you can review and delete this
-  week's entries. Includes simple guidance on how to measure your bump at home.
-- **Trends** — your weight and bump charted over the whole journey, plus a
-  week-by-week picture of how you've been feeling.
+  weekly summary highlights the good moments; gentle "things that may help"
+  suggestions appear for symptoms you log; you can review and delete entries; and
+  collapsible trends show weight, bump, and how you've been feeling over time.
+  Includes guidance on what early movements feel like and how to measure your
+  bump at home.
+- **Tools** — a set of practical utilities:
+  - *Contraction timer* — time contractions and see how close together they are,
+    with plain guidance and clear "when to call" advice.
+  - *Kick counter* — count baby's movements toward ten, with guidance on what to
+    expect and when to contact your provider.
+  - *Birth plan* — build your preferences across labor, delivery, and newborn
+    care, plus a hospital-bag checklist.
+  - *Questions for your doctor* — jot down and check off questions for your next
+    appointment.
 - **Food** — a "Can I eat this?" search covering common foods and drinks,
   including cooked-vs-raw and pasteurized-vs-unpasteurized distinctions, with the
   reasoning and source for each.
@@ -129,10 +139,12 @@ Open `http://127.0.0.1:8000`.
 | `weekContent.js` | Week 4–40 content |
 | `foodDatabase.js` | Food-safety entries + search |
 | `logOptions.js` | Feeling/symptom vocabulary |
+| `symptomRelief.js` | Symptom relief tips + movement guidance |
+| `birthPlan.js` | Birth-plan template + hospital-bag list |
 | `gestational.js` | Pregnancy dating math |
-| `charts.js` | Canvas trend chart |
+| `charts.js` | Canvas trend + bar charts |
 | `db.js` | IndexedDB layer |
-| `app.js` | Views and navigation |
+| `app.js` | Views, tools, and navigation |
 | `sw.js` | Service worker (offline) |
 | `manifest.json`, `icon-*.png` | Install assets |
 | `privacy.html`, `terms.html`, `disclaimer.html` | Legal pages |
@@ -155,5 +167,5 @@ qualified lawyer for your jurisdiction. Areas that commonly need attention:
 
 ### Roadmap (not yet in this build)
 
-Per-week notes, on-device encryption of stored data (Web Crypto), an optional
-PIN lock, and celebrations. Photos are intentionally out of the web version.
+Per-week notes, on-device encryption of stored data (Web Crypto), and an optional
+PIN lock. Photos are intentionally out of the web version.

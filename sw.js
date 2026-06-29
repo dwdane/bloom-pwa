@@ -1,6 +1,6 @@
 // sw.js — caches the app shell for offline use. Bump CACHE_VERSION on release.
 
-const CACHE_VERSION = 'bloom-pwa-v4';
+const CACHE_VERSION = 'bloom-pwa-v5';
 const ASSETS = [
   './',
   './index.html',
@@ -8,6 +8,8 @@ const ASSETS = [
   './weekContent.js',
   './foodDatabase.js',
   './logOptions.js',
+  './symptomRelief.js',
+  './birthPlan.js',
   './gestational.js',
   './charts.js',
   './db.js',

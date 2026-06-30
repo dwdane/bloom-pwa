@@ -24,7 +24,7 @@ const WEEK_CONTENT = [
   {
     week: 5,
     fruit: "a sesame seed",
-    emoji: "🌱",
+    emoji: "🟤",
     lengthCm: 0.2,
     baby: "The neural tube, which becomes the brain and spinal cord, is closing. The early heart is forming and may begin to pulse.",
     body: "Rising hormones can bring fatigue, tender breasts, and the first waves of nausea. Many people feel more tired than they expect — your body is doing enormous work.",
@@ -38,7 +38,7 @@ const WEEK_CONTENT = [
   {
     week: 6,
     fruit: "a sweet pea",
-    emoji: "🌱",
+    emoji: "🫛",
     lengthCm: 0.5,
     baby: "A heartbeat may be visible on an early ultrasound. Tiny buds that will become arms and legs are appearing, and the face is starting to take shape.",
     body: "Morning sickness can arrive in earnest and may strike at any time of day, not just mornings. Heightened smell and food aversions are common and normal.",
@@ -110,7 +110,7 @@ const WEEK_CONTENT = [
   {
     week: 11,
     fruit: "a plum",
-    emoji: "🍑",
+    emoji: "🟣",
     lengthCm: 4.1,
     weightG: 7.0,
     baby: "The baby is moving and stretching, though still unfelt. Bones are beginning to harden and tooth buds are forming beneath the gums.",
@@ -139,8 +139,8 @@ const WEEK_CONTENT = [
   },
   {
     week: 13,
-    fruit: "a nectarine",
-    emoji: "🍑",
+    fruit: "a fig",
+    emoji: "🟣",
     lengthCm: 7.4,
     weightG: 23.0,
     baby: "Vocal cords are forming and unique fingerprints have appeared. The intestines, which developed near the umbilical cord, have moved into the abdomen.",
@@ -154,8 +154,8 @@ const WEEK_CONTENT = [
   },
   {
     week: 14,
-    fruit: "a lemon",
-    emoji: "🍋",
+    fruit: "a peach",
+    emoji: "🍑",
     lengthCm: 8.7,
     weightG: 43.0,
     baby: "The baby can squint, frown, and make facial expressions. Fine hair called lanugo begins to cover the body, and the kidneys are producing urine.",
@@ -199,8 +199,8 @@ const WEEK_CONTENT = [
   },
   {
     week: 17,
-    fruit: "a mango",
-    emoji: "🥭",
+    fruit: "an onion",
+    emoji: "🧅",
     lengthCm: 13.0,
     weightG: 140.0,
     baby: "A protective coating called vernix begins to form on the skin. The skeleton is shifting from soft cartilage to bone, and fat stores are starting.",
@@ -214,8 +214,8 @@ const WEEK_CONTENT = [
   },
   {
     week: 18,
-    fruit: "an heirloom tomato",
-    emoji: "🍅",
+    fruit: "a bell pepper",
+    emoji: "🫑",
     lengthCm: 14.2,
     weightG: 190.0,
     baby: "The ears have moved into position and the baby may begin to hear sounds. Nerves are gaining a protective coating, and movements are growing more coordinated.",
@@ -229,8 +229,8 @@ const WEEK_CONTENT = [
   },
   {
     week: 19,
-    fruit: "a small coconut",
-    emoji: "🥥",
+    fruit: "a mango",
+    emoji: "🥭",
     lengthCm: 15.3,
     weightG: 240.0,
     baby: "Vernix now coats the skin to protect it in the fluid. The senses are growing more capable, and in girls the reproductive system is well developed.",
@@ -244,14 +244,14 @@ const WEEK_CONTENT = [
   },
   {
     week: 20,
-    fruit: "a small cantaloupe",
-    emoji: "🍈",
+    fruit: "a pomegranate",
+    emoji: "🔴",
     lengthCm: 25.6,
     weightG: 300.0,
     headToHeel: true,
     baby: "The halfway point. The baby is now measured head to heel as the legs extend. It is swallowing more and producing the first stool, called meconium.",
     body: "Movements are often clearly felt by now. The top of your uterus reaches your navel, and your bump is usually visible. Many feel a surge of energy and connection.",
-    encouragement: "Halfway there! You've grown a baby from a poppy seed to a cantaloupe. Take a moment to feel proud of how far you've both come.",
+    encouragement: "Halfway there! Your body has grown your baby from a single cell to this amazing milestone. Take a moment to feel proud of how far you've both come.",
     facts: [
       { text: "At 20 weeks the baby's measurement switches from crown-to-rump to head-to-heel, which is why the length appears to jump." },
       { text: "Meconium, the baby's first stool, is building up in the intestines and is usually passed in the first day or two after birth." },
@@ -276,8 +276,8 @@ const WEEK_CONTENT = [
   },
   {
     week: 22,
-    fruit: "a coconut",
-    emoji: "🥥",
+    fruit: "an eggplant",
+    emoji: "🍆",
     lengthCm: 27.8,
     weightG: 430.0,
     headToHeel: true,
@@ -308,8 +308,8 @@ const WEEK_CONTENT = [
   },
   {
     week: 24,
-    fruit: "a small cabbage",
-    emoji: "🥬",
+    fruit: "a cantaloupe",
+    emoji: "🍈",
     lengthCm: 30.0,
     weightG: 600.0,
     headToHeel: true,
@@ -324,8 +324,8 @@ const WEEK_CONTENT = [
   },
   {
     week: 25,
-    fruit: "a honeydew melon",
-    emoji: "🍈",
+    fruit: "a coconut",
+    emoji: "🥥",
     lengthCm: 34.6,
     weightG: 660.0,
     headToHeel: true,
@@ -340,8 +340,8 @@ const WEEK_CONTENT = [
   },
   {
     week: 26,
-    fruit: "a small pumpkin",
-    emoji: "🎃",
+    fruit: "a cherimoya",
+    emoji: "🟢",
     lengthCm: 35.6,
     weightG: 760.0,
     headToHeel: true,
@@ -356,8 +356,8 @@ const WEEK_CONTENT = [
   },
   {
     week: 27,
-    fruit: "a head of cabbage",
-    emoji: "🥬",
+    fruit: "a honeydew melon",
+    emoji: "🍈",
     lengthCm: 36.6,
     weightG: 875.0,
     headToHeel: true,
@@ -372,8 +372,8 @@ const WEEK_CONTENT = [
   },
   {
     week: 28,
-    fruit: "a large coconut",
-    emoji: "🥥",
+    fruit: "a papaya",
+    emoji: "🥭",
     lengthCm: 37.6,
     weightG: 1000.0,
     headToHeel: true,
@@ -388,8 +388,8 @@ const WEEK_CONTENT = [
   },
   {
     week: 29,
-    fruit: "a cantaloupe",
-    emoji: "🍈",
+    fruit: "a pineapple",
+    emoji: "🍍",
     lengthCm: 38.6,
     weightG: 1150.0,
     headToHeel: true,
@@ -404,8 +404,8 @@ const WEEK_CONTENT = [
   },
   {
     week: 30,
-    fruit: "a large cabbage",
-    emoji: "🥬",
+    fruit: "a soursop",
+    emoji: "🟢",
     lengthCm: 39.9,
     weightG: 1320.0,
     headToHeel: true,
@@ -420,8 +420,8 @@ const WEEK_CONTENT = [
   },
   {
     week: 31,
-    fruit: "a small pumpkin",
-    emoji: "🎃",
+    fruit: "a durian",
+    emoji: "🟤",
     lengthCm: 41.1,
     weightG: 1500.0,
     headToHeel: true,
@@ -436,7 +436,7 @@ const WEEK_CONTENT = [
   },
   {
     week: 32,
-    fruit: "a honeydew melon",
+    fruit: "a winter melon",
     emoji: "🍈",
     lengthCm: 42.4,
     weightG: 1700.0,
@@ -452,8 +452,8 @@ const WEEK_CONTENT = [
   },
   {
     week: 33,
-    fruit: "a winter melon",
-    emoji: "🍈",
+    fruit: "a small jackfruit",
+    emoji: "🟡",
     lengthCm: 43.7,
     weightG: 1920.0,
     headToHeel: true,
@@ -484,8 +484,8 @@ const WEEK_CONTENT = [
   },
   {
     week: 35,
-    fruit: "a honeydew melon",
-    emoji: "🍈",
+    fruit: "a small watermelon",
+    emoji: "🍉",
     lengthCm: 46.2,
     weightG: 2380.0,
     headToHeel: true,
@@ -500,8 +500,8 @@ const WEEK_CONTENT = [
   },
   {
     week: 36,
-    fruit: "a large cabbage",
-    emoji: "🥬",
+    fruit: "a breadfruit",
+    emoji: "🟢",
     lengthCm: 47.4,
     weightG: 2620.0,
     headToHeel: true,
@@ -532,8 +532,8 @@ const WEEK_CONTENT = [
   },
   {
     week: 38,
-    fruit: "a large melon",
-    emoji: "🍈",
+    fruit: "a jackfruit",
+    emoji: "🟡",
     lengthCm: 49.8,
     weightG: 3080.0,
     headToHeel: true,
@@ -548,8 +548,8 @@ const WEEK_CONTENT = [
   },
   {
     week: 39,
-    fruit: "a small watermelon",
-    emoji: "🍉",
+    fruit: "a large pumpkin",
+    emoji: "🎃",
     lengthCm: 50.7,
     weightG: 3290.0,
     headToHeel: true,
@@ -586,4 +586,63 @@ const WEEK_MAX = 40;
 function weekContentFor(week) {
   const clamped = Math.max(WEEK_MIN, Math.min(WEEK_MAX, week));
   return WEEK_CONTENT.find((w) => w.week === clamped) || WEEK_CONTENT[0];
+}
+
+// ---------------------------------------------------------------------------
+// Size themes. Fruit is the default (per-week fields above). The Sports theme
+// maps each week to a ball of roughly matching size — a fun alternative the
+// user can switch on in Settings. Stock ball emojis are used where they exist
+// (ping pong, tennis, baseball, softball, soccer, volleyball, basketball); the
+// rest fall back to a neutral ball placeholder and are good candidates for
+// custom art (same image system as fruit: art/sport-NN.png).
+// ---------------------------------------------------------------------------
+
+const SPORT_COMPARISON = {
+  4: { name: 'much smaller than a marble', emoji: '⚪', img: 'marble' },
+  5: { name: 'smaller than a marble', emoji: '⚪', img: 'marble' },
+  6: { name: 'smaller than a marble', emoji: '⚪', img: 'marble' },
+  7: { name: 'slightly smaller than a marble', emoji: '⚪', img: 'marble' },
+  8: { name: 'a marble', emoji: '⚪', img: 'marble' },
+  9: { name: 'slightly larger than a marble', emoji: '⚪', img: 'marble' },
+  10: { name: 'slightly smaller than a ping pong ball', emoji: '🏓', img: 'ping-pong-ball' },
+  11: { name: 'a ping pong ball', emoji: '🏓', img: 'ping-pong-ball' },
+  12: { name: 'a pool ball', emoji: '🎱', img: 'pool-ball' },
+  13: { name: 'a tennis ball', emoji: '🎾', img: 'tennis-ball' },
+  14: { name: 'a polo ball', emoji: '⚪', img: 'polo-ball' },
+  15: { name: 'a softball', emoji: '🥎', img: 'softball' },
+  16: { name: 'a bocce ball', emoji: '⚪', img: 'bocce-ball' },
+  17: { name: 'slightly larger than a bocce ball', emoji: '⚪', img: 'bocce-ball' },
+  18: { name: 'a rugby ball', emoji: '🏉', img: 'rugby-ball' },
+  19: { name: 'a football', emoji: '🏈', img: 'football' },
+  20: { name: 'a volleyball', emoji: '🏐', img: 'volleyball' },
+  21: { name: 'a soccer ball', emoji: '⚽', img: 'soccer-ball' },
+  22: { name: 'a netball', emoji: '⚪', img: 'netball' },
+  23: { name: 'a bowling ball', emoji: '⚪', img: 'bowling-ball' },
+  24: { name: 'slightly smaller than a basketball', emoji: '🏀', img: 'basketball' },
+  25: { name: 'a basketball', emoji: '🏀', img: 'basketball' },
+  26: { name: 'a basketball', emoji: '🏀', img: 'basketball' },
+  27: { name: 'a basketball', emoji: '🏀', img: 'basketball' },
+  28: { name: 'a basketball', emoji: '🏀', img: 'basketball' },
+  29: { name: 'a basketball', emoji: '🏀', img: 'basketball' },
+  30: { name: 'a basketball', emoji: '🏀', img: 'basketball' },
+  31: { name: 'a basketball', emoji: '🏀', img: 'basketball' },
+  32: { name: 'slightly larger than a basketball', emoji: '🏀', img: 'basketball' },
+  33: { name: 'slightly larger than a basketball', emoji: '🏀', img: 'basketball' },
+  34: { name: 'slightly larger than a basketball', emoji: '🏀', img: 'basketball' },
+  35: { name: 'slightly larger than a basketball', emoji: '🏀', img: 'basketball' },
+  36: { name: 'slightly larger than a basketball', emoji: '🏀', img: 'basketball' },
+  37: { name: 'slightly larger than a basketball', emoji: '🏀', img: 'basketball' },
+  38: { name: 'slightly larger than a basketball', emoji: '🏀', img: 'basketball' },
+  39: { name: 'a curling stone', emoji: '⚪', img: 'curling-stone' },
+  40: { name: 'a medicine ball', emoji: '⚪', img: 'medicine-ball' },
+};
+
+// Return { name, emoji } for the chosen theme ('fruit' | 'sport').
+function comparisonFor(week, theme) {
+  const info = weekContentFor(week);
+  if (theme === 'sport') {
+    const s = SPORT_COMPARISON[info.week];
+    if (s) return { name: s.name, emoji: s.emoji, img: s.img };
+  }
+  return { name: info.fruit, emoji: info.emoji };
 }

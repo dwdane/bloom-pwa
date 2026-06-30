@@ -5,12 +5,14 @@
 
 (() => {
   const root = document.getElementById('app');
+  const APP_VERSION = 'v12';
 
   const state = {
     dating: { lmp: null, ultrasoundDueDate: null },
     imperial: true,
     babyName: '',
     gender: 'surprise', // 'girl' | 'boy' | 'surprise'
+    theme: 'fruit', // size comparison theme: 'fruit' | 'sport'
     view: 'week',
     viewWeek: null,
     prevView: 'week',
@@ -157,6 +159,37 @@
   function entryDateMs(e) {
     if (e.date) return new Date(e.date + 'T00:00:00').getTime();
     return e.createdAt || Date.now();
+  }
+
+  // Run after any user log: celebrate milestones, then re-render.
+  async function afterLog() {
+    await checkMilestones();
+    renderApp();
+  }
+
+  // Build the feeling/symptom chip groups (shared by the Log tab and the
+  // Today card). Logs to the given day and runs afterLog() on tap.
+  function feelingChipGroups(week, dayIso, container) {
+    for (const category of LOG_CATEGORIES) {
+      container.appendChild(el('p', { class: 'chip-group-title', text: category.title }));
+      const group = el('div', { class: 'chip-group' });
+      for (const option of category.options) {
+        group.appendChild(
+          el('button', {
+            class: `log-chip tone-${option.tone}`,
+            onClick: async () => {
+              await Store.addEntry({ kind: option.kind, label: option.label, week, date: dayIso });
+              toast(`Logged: ${option.label}`);
+              afterLog();
+            },
+          }, [
+            option.emoji ? el('span', { class: 'chip-emoji', text: option.emoji }) : null,
+            document.createTextNode(option.label),
+          ])
+        );
+      }
+      container.appendChild(group);
+    }
   }
 
   function numberDialog({ title, unit, placeholder }) {
@@ -531,6 +564,32 @@
   // time the app is opened on a new gestational week.
   // ---------------------------------------------------------------------------
 
+  // A brief shower of an emoji with an optional banner. Reused for new weeks,
+  // logging streaks, weight-gain milestones, and lively kick sessions.
+  function emojiRain(emoji, title, sub, opts = {}) {
+    const layer = el('div', { class: 'celebrate-layer' });
+    if (title) {
+      layer.appendChild(
+        el('div', { class: 'celebrate-banner' }, [
+          el('div', { class: 'celebrate-week', text: title }),
+          sub ? el('div', { class: 'celebrate-sub', text: sub }) : null,
+        ])
+      );
+    }
+    const count = opts.count || 20;
+    for (let i = 0; i < count; i++) {
+      const drop = el('div', { class: 'celebrate-drop', text: emoji });
+      drop.style.left = Math.random() * 100 + '%';
+      drop.style.animationDelay = Math.random() * 0.6 + 's';
+      drop.style.animationDuration = 1.5 + Math.random() * 1.2 + 's';
+      drop.style.fontSize = 1.3 + Math.random() * 1.5 + 'rem';
+      layer.appendChild(drop);
+    }
+    document.body.appendChild(layer);
+    setTimeout(() => layer.classList.add('fade'), title ? 2200 : 1900);
+    setTimeout(() => layer.remove(), title ? 2900 : 2600);
+  }
+
   async function maybeCelebrateNewWeek() {
     const wk = currentWeek();
     const lastSeen = await Store.getSetting('lastSeenWeek');
@@ -540,32 +599,156 @@
     }
     if (wk > lastSeen && wk >= WEEK_MIN && wk <= WEEK_MAX) {
       await Store.setSetting('lastSeenWeek', wk);
-      const info = weekContentFor(wk);
-      celebrateWeek(wk, info.emoji);
+      const compare = comparisonFor(wk, state.theme);
+      emojiRain(compare.emoji, `Week ${wk}`, `${babyLabel()} is growing \u2014 here we go!`);
     }
   }
 
-  function celebrateWeek(week, emoji) {
-    const layer = el('div', { class: 'celebrate-layer' });
-    const banner = el('div', { class: 'celebrate-banner' }, [
-      el('div', { class: 'celebrate-week', text: `Week ${week}` }),
-      el('div', { class: 'celebrate-sub', text: `${babyLabel()} is growing \u2014 here we go!` }),
+  // Compact "today" tracker shown on the Week (home) page: quick log buttons
+  // for weight, bump, feelings, and movements, and a concise read-out of what's
+  // already logged today so it's easy to see the day was tracked.
+  function todayCard() {
+    const dayIso = todayISO();
+    const week = currentWeek();
+    const card = el('div', { class: 'card today-card' }, [
+      el('h3', { class: 'card-title', text: 'Today' }),
     ]);
-    layer.appendChild(banner);
+    const rows = el('div', { class: 'today-rows' });
+    card.appendChild(rows);
 
-    const count = 22;
-    for (let i = 0; i < count; i++) {
-      const drop = el('div', { class: 'celebrate-drop', text: emoji });
-      drop.style.left = Math.random() * 100 + '%';
-      drop.style.animationDelay = Math.random() * 0.6 + 's';
-      drop.style.animationDuration = 1.6 + Math.random() * 1.2 + 's';
-      drop.style.fontSize = 1.4 + Math.random() * 1.6 + 'rem';
-      layer.appendChild(drop);
+    function quickLogWeight(kind, dialogTitle, unit, toStored) {
+      return async () => {
+        const entered = await numberDialog({ title: dialogTitle, unit: unit() });
+        if (entered == null) return;
+        await Store.addEntry({ kind, value: toStored(entered), week, date: dayIso });
+        toast(`Logged ${entered.toFixed(1)} ${unit()}`);
+        afterLog();
+      };
     }
 
-    document.body.appendChild(layer);
-    setTimeout(() => layer.classList.add('fade'), 2200);
-    setTimeout(() => layer.remove(), 2900);
+    function row(label, valueEl, actionEl) {
+      return el('div', { class: 'today-row' }, [
+        el('span', { class: 'today-label', text: label }),
+        el('span', { class: 'today-value' }, [valueEl]),
+        actionEl,
+      ]);
+    }
+
+    function logBtn(text, onClick) {
+      return el('button', { class: 'today-log-btn', text, onClick });
+    }
+
+    Store.entriesForDate(dayIso).then((entries) => {
+      rows.innerHTML = '';
+
+      // Weight
+      const w = entries.filter((e) => e.kind === 'weight').sort((a, b) => b.createdAt - a.createdAt)[0];
+      rows.appendChild(
+        row(
+          'Weight',
+          w ? el('span', { class: 'today-num', text: fromStoredWeight(w.value).toFixed(1) + ' ' + weightUnit() }) : el('span', { class: 'muted small', text: 'Not logged' }),
+          logBtn(w ? 'Update' : 'Log', quickLogWeight('weight', 'Log weight', weightUnit, toStoredWeight))
+        )
+      );
+
+      // Bump
+      const b = entries.filter((e) => e.kind === 'bump').sort((a, b) => b.createdAt - a.createdAt)[0];
+      rows.appendChild(
+        row(
+          'Bump',
+          b ? el('span', { class: 'today-num', text: fromStoredBump(b.value).toFixed(1) + ' ' + bumpUnit() }) : el('span', { class: 'muted small', text: 'Not logged' }),
+          logBtn(b ? 'Update' : 'Log', quickLogWeight('bump', 'Log bump size', bumpUnit, toStoredBump))
+        )
+      );
+
+      // Feelings / symptoms — concise list, with an inline picker
+      const feels = entries.filter((e) => e.kind === 'feeling' || e.kind === 'symptom');
+      const picker = el('div', { class: 'today-picker', style: 'display:none' });
+      feelingChipGroups(week, dayIso, picker);
+      let valueNode;
+      if (feels.length) {
+        const shown = feels.slice(0, 6).map((e) => (emojiForLabel(e.label) || '') + ' ' + e.label).join('  ');
+        const extra = feels.length > 6 ? `  +${feels.length - 6}` : '';
+        valueNode = el('span', { class: 'today-feels small', text: shown + extra });
+      } else {
+        valueNode = el('span', { class: 'muted small', text: 'Not logged' });
+      }
+      const feelToggle = logBtn(feels.length ? 'Add' : 'Log', () => {
+        picker.style.display = picker.style.display === 'none' ? 'block' : 'none';
+      });
+      rows.appendChild(row('Feelings', valueNode, feelToggle));
+      rows.appendChild(picker);
+
+      // Movements — quick tap logger with a collapsed timestamp list
+      const kicks = entries
+        .filter((e) => e.kind === 'kick')
+        .sort((a, b) => a.createdAt - b.createdAt);
+      const kickValue = el('span', {}, [
+        kicks.length
+          ? el('span', { class: 'today-num', text: `${kicks.length} \ud83d\udc63` })
+          : el('span', { class: 'muted small', text: 'None yet' }),
+      ]);
+      const kickBtn = logBtn('+ Movement', async () => {
+        await Store.addEntry({ kind: 'kick', week, date: dayIso });
+        toast('Movement logged \ud83d\udc63');
+        afterLog();
+      });
+      rows.appendChild(row('Movements', kickValue, kickBtn));
+
+      // collapsed timestamp list
+      if (kicks.length) {
+        const tlBody = el('div', { class: 'collapsible-body today-kick-times', style: 'display:none' });
+        tlBody.appendChild(
+          el('div', { class: 'kick-time-chips' },
+            kicks.map((k) =>
+              el('span', { class: 'kick-time-chip', text: new Date(k.createdAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) })
+            )
+          )
+        );
+        const tlToggle = el('button', {
+          class: 'collapsible-toggle today-kick-toggle',
+          text: `See ${kicks.length} movement time${kicks.length === 1 ? '' : 's'}  \u25be`,
+          onClick: () => {
+            const open = tlBody.style.display !== 'none';
+            tlBody.style.display = open ? 'none' : 'block';
+            tlToggle.textContent = (open ? `See ${kicks.length} movement time${kicks.length === 1 ? '' : 's'}  \u25be` : 'Hide times  \u25b4');
+          },
+        });
+        rows.appendChild(tlToggle);
+        rows.appendChild(tlBody);
+      }
+    });
+
+    return card;
+  }
+
+  // Turn an item name into an image-file slug, e.g. "a small pumpkin" ->
+  // "small-pumpkin". Sport entries can override this with an explicit `img`.
+  function comparisonSlug(name) {
+    return name
+      .replace(/^(a|an)\s+/i, '')
+      .trim()
+      .replace(/[^a-z0-9]+/gi, '-')
+      .replace(/^-+|-+$/g, '')
+      .toLowerCase();
+  }
+
+  // The size-comparison visual for a week. Tries a custom image first
+  // (art/<theme>-<slug>.png, e.g. art/fruit-pomegranate.png); if it isn't
+  // present, the themed emoji stays. Art can be added incrementally, no code.
+  function comparisonVisual(week) {
+    const c = comparisonFor(week, state.theme);
+    const holder = el('div', { class: 'hero-emoji', text: c.emoji });
+    const key = c.img || comparisonSlug(c.name);
+    const img = new Image();
+    img.className = 'hero-art';
+    img.alt = c.name;
+    img.onload = () => {
+      holder.textContent = '';
+      holder.appendChild(img);
+    };
+    img.src = `art/${state.theme}-${key}.png`;
+    return holder;
   }
 
   function renderWeekView(container) {
@@ -585,29 +768,26 @@
       ? ['', 'First trimester', 'Second trimester', 'Third trimester'][age.trimester]
       : '';
 
+    const compare = comparisonFor(info.week, state.theme);
+    const compareText = /^(a |an )/i.test(compare.name)
+      ? `About the size of ${compare.name}`
+      : compare.name.charAt(0).toUpperCase() + compare.name.slice(1);
     const heroChildren = [
-      el('div', { class: 'hero-emoji', text: info.emoji }),
+      comparisonVisual(info.week),
       el('div', { class: 'hero-week', text: `Week ${info.week}` }),
     ];
     if (babyName()) {
       heroChildren.push(el('div', { class: 'hero-name', text: babyName() }));
     }
-    heroChildren.push(
-      el('div', { class: 'hero-fruit', text: `About the size of ${info.fruit}` })
-    );
+    heroChildren.push(el('div', { class: 'hero-fruit', text: compareText }));
     if (measure) {
       heroChildren.push(el('div', { class: 'hero-measure', text: measure + lengthNote }));
     }
-    const heroChips = el('div', { class: 'hero-chips' });
     if (trimesterLabel && !isOther) {
+      const heroChips = el('div', { class: 'hero-chips' });
       heroChips.appendChild(el('div', { class: 'chip', text: trimesterLabel }));
+      heroChildren.push(heroChips);
     }
-    heroChips.appendChild(
-      el('div', { class: `chip gender-chip ${state.gender}` }, [
-        document.createTextNode(genderEmoji() + ' ' + genderChipText()),
-      ])
-    );
-    heroChildren.push(heroChips);
     const hero = el('div', { class: 'card hero' }, heroChildren);
 
     // calendar day strip for the viewed week; tap a day to log it
@@ -735,6 +915,7 @@
         viewHeader('Bloom'),
         hero,
         strip,
+        todayCard(),
         nav,
         progress,
         babyCard,
@@ -822,33 +1003,7 @@
     const feelingsCard = el('div', { class: 'card' }, [
       el('h3', { class: 'card-title', text: `How are you feeling ${dayWord}?` }),
     ]);
-    for (const category of LOG_CATEGORIES) {
-      feelingsCard.appendChild(
-        el('p', { class: 'chip-group-title', text: category.title })
-      );
-      const group = el('div', { class: 'chip-group' });
-      for (const option of category.options) {
-        group.appendChild(
-          el('button', {
-            class: `log-chip tone-${option.tone}`,
-            onClick: async () => {
-              await Store.addEntry({
-                kind: option.kind,
-                label: option.label,
-                week,
-                date: dayIso,
-              });
-              toast(`Logged: ${option.label}`);
-              renderApp();
-            },
-          }, [
-            option.emoji ? el('span', { class: 'chip-emoji', text: option.emoji }) : null,
-            document.createTextNode(option.label),
-          ])
-        );
-      }
-      feelingsCard.appendChild(group);
-    }
+    feelingChipGroups(week, dayIso, feelingsCard);
     // movement note + a relief disclosure live with feelings
     const moveBody = el('div', { class: 'collapsible-body' }, [
       el('p', { text: MOVEMENT_INFO.whatItFeelsLike }),
@@ -899,7 +1054,7 @@
                 date: dayIso,
               });
               toast(`Logged ${entered.toFixed(1)} ${opts.unit()}`);
-              renderApp();
+              afterLog();
             },
           }),
         ])
@@ -1121,8 +1276,11 @@
     }
 
     function refreshWeekData() {
-      Store.entriesForDate(dayIso).then((entries) => {
+      Store.entriesForDate(dayIso).then((allDayEntries) => {
         const isToday = dayIso === todayISO();
+        // movements are tracked separately (on the home card); summarize, don't list each
+        const kicks = allDayEntries.filter((e) => e.kind === 'kick');
+        const entries = allDayEntries.filter((e) => e.kind !== 'kick');
         // summary
         const feelingSymptom = entries.filter(
           (e) => e.kind === 'feeling' || e.kind === 'symptom'
@@ -1133,20 +1291,22 @@
         summary.innerHTML = '';
         summary.appendChild(el('div', { class: 'summary-emoji', text: '\ud83c\udf3c' }));
         const total = entries.length;
+        const subLines = [];
+        if (good > 0) subLines.push(`${good} good moment${good === 1 ? '' : 's'} \ud83d\udc9b`);
+        if (kicks.length) subLines.push(`${kicks.length} movement${kicks.length === 1 ? '' : 's'} \ud83d\udc63`);
         summary.appendChild(
           el('div', {}, [
             el('div', {
               class: 'summary-line',
               text:
-                total === 0
+                total === 0 && kicks.length === 0
                   ? (isToday ? 'Nothing logged yet today' : 'Nothing logged that day')
+                  : total === 0
+                  ? (isToday ? 'Movements logged today' : 'Movements logged that day')
                   : `${total} thing${total === 1 ? '' : 's'} logged ${isToday ? 'today' : 'that day'}`,
             }),
-            good > 0
-              ? el('div', {
-                  class: 'summary-sub muted small',
-                  text: `${good} good moment${good === 1 ? '' : 's'} \ud83d\udc9b`,
-                })
+            subLines.length
+              ? el('div', { class: 'summary-sub muted small', text: subLines.join('  \u00b7  ') })
               : null,
           ])
         );
@@ -1863,18 +2023,55 @@
 
   // A brief shower of footprints for a lively kick session.
   function footprintCelebration() {
-    const layer = el('div', { class: 'celebrate-layer' });
-    for (let i = 0; i < 16; i++) {
-      const drop = el('div', { class: 'celebrate-drop', text: '\ud83d\udc63' });
-      drop.style.left = Math.random() * 100 + '%';
-      drop.style.animationDelay = Math.random() * 0.5 + 's';
-      drop.style.animationDuration = 1.5 + Math.random() * 1.1 + 's';
-      drop.style.fontSize = 1.2 + Math.random() * 1.4 + 'rem';
-      layer.appendChild(drop);
+    emojiRain('\ud83d\udc63', null, null, { count: 16 });
+  }
+
+  // After a log, celebrate streaks and weight-gain milestones (body-positive,
+  // never prescriptive). Fires at most one rain per call.
+  async function checkMilestones() {
+    const entries = await Store.allEntries();
+    if (entries.length === 0) return;
+
+    // --- weight-gain milestone: every 5 lb (2 kg) of gain from start ---
+    const weights = entries
+      .filter((e) => e.kind === 'weight' && e.value != null)
+      .sort((a, b) => entryDateMs(a) - entryDateMs(b));
+    if (weights.length >= 2) {
+      const startStored = await Store.getSetting('startWeight');
+      const startKg = startStored != null ? startStored : weights[0].value;
+      const gainKg = weights[weights.length - 1].value - startKg;
+      const stepKg = state.imperial ? 5 / 2.2046226218 : 2; // every 5 lb or 2 kg
+      const milestone = Math.floor(gainKg / stepKg);
+      const prev = (await Store.getSetting('celebratedGainStep')) || 0;
+      if (milestone > prev && gainKg > 0) {
+        await Store.setSetting('celebratedGainStep', milestone);
+        const gainDisp = state.imperial ? gainKg * 2.2046226218 : gainKg;
+        const unit = state.imperial ? 'lb' : 'kg';
+        emojiRain('\ud83c\udf37', `+${gainDisp.toFixed(0)} ${unit}`, 'Your body is doing exactly what it should. ');
+        return;
+      }
     }
-    document.body.appendChild(layer);
-    setTimeout(() => layer.classList.add('fade'), 1900);
-    setTimeout(() => layer.remove(), 2600);
+
+    // --- logging streak: consecutive days up to today with any entry ---
+    const days = new Set(entries.map((e) => entryDate(e)));
+    let streak = 0;
+    let cursor = new Date();
+    for (;;) {
+      const iso = isoDate(cursor);
+      if (days.has(iso)) {
+        streak++;
+        cursor = addDays(cursor, -1);
+      } else {
+        break;
+      }
+    }
+    const tiers = [3, 7, 14, 30, 60, 90];
+    const reached = tiers.filter((t) => streak >= t).pop() || 0;
+    const prevStreak = (await Store.getSetting('celebratedStreak')) || 0;
+    if (reached > prevStreak) {
+      await Store.setSetting('celebratedStreak', reached);
+      emojiRain('\u2b50', `${reached}-day streak!`, 'Look at you, showing up for yourself. ');
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -2337,6 +2534,30 @@
       ])
     );
 
+    // Size comparison theme
+    const themeSeg = el('div', { class: 'segmented theme-seg' });
+    for (const [key, label] of [['fruit', '\ud83c\udf4e Fruit'], ['sport', '\u26bd Sports']]) {
+      const b = el('button', {
+        class: 'seg-btn' + (state.theme === key ? ' active' : ''),
+        text: label,
+        onClick: () => {
+          state.theme = key;
+          Store.setSetting('theme', key);
+          renderApp();
+        },
+      });
+      b.dataset.t = key;
+      themeSeg.appendChild(b);
+    }
+    wrap.appendChild(
+      el('div', { class: 'card' }, [
+        el('h3', { class: 'card-title', text: 'Size comparison' }),
+        el('p', { class: 'small', text: 'How to picture your baby\u2019s size each week.' }),
+        themeSeg,
+      ])
+    );
+
+    wrap.appendChild(updateCard());
     wrap.appendChild(installCard());
 
     wrap.appendChild(
@@ -2347,6 +2568,48 @@
     );
 
     container.appendChild(wrap);
+  }
+
+  // Manual "check for updates": forces a service-worker check and refreshes if a
+  // newer version is found, so people don't have to reinstall to the home screen.
+  function updateCard() {
+    const status = el('div', { class: 'muted small update-status', text: `Version ${APP_VERSION}` });
+    const btn = el('button', {
+      class: 'secondary compact',
+      text: 'Check for updates',
+      onClick: async () => {
+        if (!('serviceWorker' in navigator)) {
+          status.textContent = 'Updates aren\u2019t supported in this browser.';
+          return;
+        }
+        status.textContent = 'Checking\u2026';
+        try {
+          const reg = window.__bloomSW || (await navigator.serviceWorker.getRegistration());
+          if (!reg) {
+            status.textContent = 'No update info yet \u2014 reopen the app and try again.';
+            return;
+          }
+          await reg.update();
+          // Give the browser a moment to begin installing any new worker.
+          setTimeout(() => {
+            if (reg.installing || reg.waiting) {
+              status.textContent = 'Update found \u2014 refreshing\u2026';
+              if (reg.waiting) reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+              setTimeout(() => location.reload(), 900);
+            } else {
+              status.textContent = `You\u2019re on the latest version (${APP_VERSION}). \u2713`;
+            }
+          }, 1500);
+        } catch (e) {
+          status.textContent = 'Couldn\u2019t check right now \u2014 you may be offline.';
+        }
+      },
+    });
+    return el('div', { class: 'card' }, [
+      el('h3', { class: 'card-title', text: 'App updates' }),
+      el('p', { class: 'small', text: 'Bloom updates itself when you reopen it. You can also check now \u2014 no need to reinstall.' }),
+      el('div', { class: 'update-row' }, [btn, status]),
+    ]);
   }
 
   // Reusable collapsible "how to install" instructions, used on the welcome
@@ -2389,7 +2652,9 @@
     const dating = await Store.getSetting('dating');
     const units = await Store.getSetting('units');
     const baby = await Store.getSetting('baby');
+    const theme = await Store.getSetting('theme');
     if (units) state.imperial = units === 'imperial';
+    if (theme === 'sport' || theme === 'fruit') state.theme = theme;
     if (baby) {
       state.babyName = baby.name || '';
       state.gender = baby.gender || 'surprise';

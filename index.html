@@ -29,8 +29,48 @@
   <script src="app.js"></script>
   <script>
     if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('sw.js').catch(() => {});
+      window.addEventListener('load', async () => {
+        try {
+          const reg = await navigator.serviceWorker.register('sw.js');
+          window.__bloomSW = reg;
+
+          // Force an update check now, and hourly while the app stays open.
+          reg.update().catch(() => {});
+          setInterval(() => reg.update().catch(() => {}), 60 * 60 * 1000);
+
+          const hadController = !!navigator.serviceWorker.controller;
+          let banner = false;
+          function showUpdateBanner() {
+            if (banner) return;
+            banner = true;
+            const bar = document.createElement('div');
+            bar.className = 'update-banner';
+            const msg = document.createElement('span');
+            msg.textContent = 'A new version of Bloom is ready.';
+            const btn = document.createElement('button');
+            btn.textContent = 'Refresh';
+            btn.onclick = () => location.reload();
+            bar.appendChild(msg);
+            bar.appendChild(btn);
+            document.body.appendChild(bar);
+          }
+
+          // A newly installed worker while one already controls the page = update.
+          reg.addEventListener('updatefound', () => {
+            const nw = reg.installing;
+            if (!nw) return;
+            nw.addEventListener('statechange', () => {
+              if (nw.state === 'installed' && navigator.serviceWorker.controller) {
+                showUpdateBanner();
+              }
+            });
+          });
+          navigator.serviceWorker.addEventListener('controllerchange', () => {
+            if (hadController) showUpdateBanner();
+          });
+        } catch (e) {
+          /* offline or unsupported — app still works */
+        }
       });
     }
   </script>

@@ -1,6 +1,6 @@
 // sw.js — caches the app shell for offline use. Bump CACHE_VERSION on release.
 
-const CACHE_VERSION = 'bloom-pwa-v12';
+const CACHE_VERSION = 'bloom-pwa-v17';
 const ASSETS = [
   './',
   './index.html',
@@ -43,9 +43,21 @@ self.addEventListener('message', (event) => {
 
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
+  const req = event.request;
   event.respondWith(
-    caches.match(event.request).then(
-      (cached) => cached || fetch(event.request).catch(() => caches.match('./index.html'))
-    )
+    caches.match(req).then((cached) => {
+      if (cached) return cached;
+      return fetch(req)
+        .then((resp) => {
+          // Runtime-cache successful same-origin files (e.g. art/*.png added
+          // incrementally) so they work offline after the first view.
+          if (resp && resp.ok && resp.type === 'basic') {
+            const clone = resp.clone();
+            caches.open(CACHE_VERSION).then((c) => c.put(req, clone));
+          }
+          return resp;
+        })
+        .catch(() => (req.mode === 'navigate' ? caches.match('./index.html') : Response.error()));
+    })
   );
 });

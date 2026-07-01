@@ -5,7 +5,7 @@
 
 (() => {
   const root = document.getElementById('app');
-  const APP_VERSION = 'v12';
+  const APP_VERSION = 'v17';
 
   const state = {
     dating: { lmp: null, ultrasoundDueDate: null },
@@ -734,8 +734,8 @@
   }
 
   // The size-comparison visual for a week. Tries a custom image first
-  // (art/<theme>-<slug>.png, e.g. art/fruit-pomegranate.png); if it isn't
-  // present, the themed emoji stays. Art can be added incrementally, no code.
+  // (<theme>-<slug>.png in the repo root, e.g. fruit-pomegranate.png); if it
+  // isn't present, the themed emoji stays. Art can be added incrementally.
   function comparisonVisual(week) {
     const c = comparisonFor(week, state.theme);
     const holder = el('div', { class: 'hero-emoji', text: c.emoji });
@@ -747,7 +747,7 @@
       holder.textContent = '';
       holder.appendChild(img);
     };
-    img.src = `art/${state.theme}-${key}.png`;
+    img.src = `${state.theme}-${key}.png`;
     return holder;
   }
 

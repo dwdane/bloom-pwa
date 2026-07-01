@@ -5,7 +5,7 @@
 
 (() => {
   const root = document.getElementById('app');
-  const APP_VERSION = 'v20';
+  const APP_VERSION = 'v23';
 
   const state = {
     dating: { lmp: null, ultrasoundDueDate: null },

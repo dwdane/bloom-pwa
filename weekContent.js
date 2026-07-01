@@ -199,8 +199,8 @@ const WEEK_CONTENT = [
   },
   {
     week: 17,
-    fruit: "an onion",
-    emoji: "🧅",
+    fruit: "a pear",
+    emoji: "🍐",
     lengthCm: 13.0,
     weightG: 140.0,
     baby: "A protective coating called vernix begins to form on the skin. The skeleton is shifting from soft cartilage to bone, and fat stores are starting.",
@@ -292,8 +292,8 @@ const WEEK_CONTENT = [
   },
   {
     week: 23,
-    fruit: "a pomelo",
-    emoji: "🍊",
+    fruit: "a large tomato",
+    emoji: "🍅",
     lengthCm: 28.9,
     weightG: 500.0,
     headToHeel: true,
@@ -340,8 +340,8 @@ const WEEK_CONTENT = [
   },
   {
     week: 26,
-    fruit: "a cherimoya",
-    emoji: "🟢",
+    fruit: "a head of lettuce",
+    emoji: "🥬",
     lengthCm: 35.6,
     weightG: 760.0,
     headToHeel: true,
@@ -436,7 +436,7 @@ const WEEK_CONTENT = [
   },
   {
     week: 32,
-    fruit: "a honeydew melon",
+    fruit: "a winter melon",
     emoji: "🍈",
     lengthCm: 42.4,
     weightG: 1700.0,

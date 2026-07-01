@@ -404,7 +404,7 @@ const WEEK_CONTENT = [
   },
   {
     week: 30,
-    fruit: "a soursop",
+    fruit: "an acorn squash",
     emoji: "🟢",
     lengthCm: 39.9,
     weightG: 1320.0,
@@ -420,8 +420,8 @@ const WEEK_CONTENT = [
   },
   {
     week: 31,
-    fruit: "a durian",
-    emoji: "🟤",
+    fruit: "a sugar pie pumpkin",
+    emoji: "🎃",
     lengthCm: 41.1,
     weightG: 1500.0,
     headToHeel: true,
@@ -436,7 +436,7 @@ const WEEK_CONTENT = [
   },
   {
     week: 32,
-    fruit: "a winter melon",
+    fruit: "a honeydew melon",
     emoji: "🍈",
     lengthCm: 42.4,
     weightG: 1700.0,
@@ -452,8 +452,8 @@ const WEEK_CONTENT = [
   },
   {
     week: 33,
-    fruit: "a small jackfruit",
-    emoji: "🟡",
+    fruit: "a butternut squash",
+    emoji: "🟤",
     lengthCm: 43.7,
     weightG: 1920.0,
     headToHeel: true,
@@ -468,8 +468,8 @@ const WEEK_CONTENT = [
   },
   {
     week: 34,
-    fruit: "a small pumpkin",
-    emoji: "🎃",
+    fruit: "a spaghetti squash",
+    emoji: "🟡",
     lengthCm: 45.0,
     weightG: 2150.0,
     headToHeel: true,
@@ -484,7 +484,7 @@ const WEEK_CONTENT = [
   },
   {
     week: 35,
-    fruit: "a small watermelon",
+    fruit: "a sugar baby watermelon",
     emoji: "🍉",
     lengthCm: 46.2,
     weightG: 2380.0,
@@ -500,8 +500,8 @@ const WEEK_CONTENT = [
   },
   {
     week: 36,
-    fruit: "a breadfruit",
-    emoji: "🟢",
+    fruit: "a field pumpkin",
+    emoji: "🎃",
     lengthCm: 47.4,
     weightG: 2620.0,
     headToHeel: true,
@@ -516,7 +516,7 @@ const WEEK_CONTENT = [
   },
   {
     week: 37,
-    fruit: "a pumpkin",
+    fruit: "a jack-o'-lantern pumpkin",
     emoji: "🎃",
     lengthCm: 48.6,
     weightG: 2860.0,
@@ -532,8 +532,8 @@ const WEEK_CONTENT = [
   },
   {
     week: 38,
-    fruit: "a jackfruit",
-    emoji: "🟡",
+    fruit: "a Cinderella pumpkin",
+    emoji: "🎃",
     lengthCm: 49.8,
     weightG: 3080.0,
     headToHeel: true,
@@ -548,8 +548,8 @@ const WEEK_CONTENT = [
   },
   {
     week: 39,
-    fruit: "a large pumpkin",
-    emoji: "🎃",
+    fruit: "a watermelon",
+    emoji: "🍉",
     lengthCm: 50.7,
     weightG: 3290.0,
     headToHeel: true,

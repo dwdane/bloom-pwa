@@ -5,7 +5,7 @@
 
 (() => {
   const root = document.getElementById('app');
-  const APP_VERSION = 'v17';
+  const APP_VERSION = 'v20';
 
   const state = {
     dating: { lmp: null, ultrasoundDueDate: null },
@@ -1551,13 +1551,245 @@
   // Tools tab: hub + individual tools
   // ---------------------------------------------------------------------------
 
+  // --- Birth plan ---
+  function renderBirthPlan(container) {
+    const wrap = el('div', { class: 'wrap' }, [toolHeader('Birth plan')]);
+    container.appendChild(wrap);
+
+    let plan = { checked: {}, custom: {}, notes: '' };
+    const openInfo = new Set();
+    let previewing = false;
+    const persist = () => Store.setSetting('birthPlan', plan);
+
+    wrap.appendChild(
+      el('div', { class: 'card bp-intro' }, [
+        el('p', { class: 'bp-encourage', text: BIRTH_PLAN.encouragement }),
+        el('p', { class: 'muted small', text: BIRTH_PLAN.disclaimer }),
+      ])
+    );
+
+    const body = el('div', {});
+    wrap.appendChild(body);
+
+    function toggle(id) {
+      if (plan.checked[id]) delete plan.checked[id];
+      else plan.checked[id] = true;
+      persist();
+      render();
+    }
+
+    function renderOption(section, opt) {
+      const checked = !!plan.checked[opt.id];
+      const box = el('button', {
+        class: 'bp-check' + (checked ? ' on' : ''),
+        role: 'checkbox',
+        'aria-checked': checked ? 'true' : 'false',
+        'aria-label': opt.label,
+        onClick: () => toggle(opt.id),
+      }, [el('span', { class: 'bp-check-mark', text: checked ? '\u2713' : '' })]);
+
+      const main = el('div', { class: 'bp-opt-main' }, [
+        el('button', {
+          class: 'bp-opt-label' + (checked ? ' on' : ''),
+          text: opt.label,
+          onClick: () => toggle(opt.id),
+        }),
+      ]);
+
+      if (opt.info) {
+        const expanded = openInfo.has(opt.id);
+        main.appendChild(
+          el('button', {
+            class: 'bp-why' + (expanded ? ' on' : ''),
+            text: expanded ? 'Hide' : 'Why?',
+            onClick: () => {
+              if (openInfo.has(opt.id)) openInfo.delete(opt.id);
+              else openInfo.add(opt.id);
+              render();
+            },
+          })
+        );
+        if (expanded) main.appendChild(el('p', { class: 'bp-info', text: opt.info }));
+      }
+
+      return el('div', { class: 'bp-opt' }, [box, main]);
+    }
+
+    function renderSection(section) {
+      const card = el('div', { class: 'card bp-section' }, [
+        el('h3', { class: 'card-title', text: section.title }),
+      ]);
+      if (section.blurb) card.appendChild(el('p', { class: 'muted small bp-blurb', text: section.blurb }));
+
+      for (const opt of section.options) card.appendChild(renderOption(section, opt));
+
+      const items = plan.custom[section.id] || [];
+      for (const item of items) {
+        card.appendChild(
+          el('div', { class: 'bp-custom-row' }, [
+            el('span', { class: 'bp-custom-text', text: item.text }),
+            el('button', {
+              class: 'bp-del',
+              text: '\u00d7',
+              'aria-label': 'Remove',
+              onClick: () => {
+                plan.custom[section.id] = (plan.custom[section.id] || []).filter((i) => i.id !== item.id);
+                persist();
+                render();
+              },
+            }),
+          ])
+        );
+      }
+
+      const input = el('input', {
+        type: 'text',
+        class: 'food-search bp-add-input',
+        placeholder: 'Add your own\u2026',
+        autocomplete: 'off',
+      });
+      const addBtn = el('button', { class: 'primary compact', text: 'Add' });
+      const add = () => {
+        const v = input.value.trim();
+        if (!v) return;
+        if (!plan.custom[section.id]) plan.custom[section.id] = [];
+        plan.custom[section.id].push({ id: uid(), text: v });
+        input.value = '';
+        persist();
+        render();
+      };
+      addBtn.addEventListener('click', add);
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') add();
+      });
+      card.appendChild(el('div', { class: 'q-input-row' }, [input, addBtn]));
+
+      return card;
+    }
+
+    function buildPlanText() {
+      const lines = [];
+      lines.push(babyName() ? `Birth preferences for ${babyName()}` : 'Birth preferences');
+      lines.push('');
+      for (const section of BIRTH_PLAN.sections) {
+        const chosen = section.options.filter((o) => plan.checked[o.id]).map((o) => o.label);
+        const custom = (plan.custom[section.id] || []).map((i) => i.text);
+        const all = chosen.concat(custom);
+        if (all.length === 0) continue;
+        lines.push(section.title + ':');
+        for (const item of all) lines.push('  \u2022 ' + item);
+        lines.push('');
+      }
+      if (plan.notes && plan.notes.trim()) {
+        lines.push('Anything else:');
+        lines.push('  ' + plan.notes.trim());
+        lines.push('');
+      }
+      lines.push(
+        '\u2014 We know things may change, and our priority is a safe, healthy birth ' +
+          'for baby and me. Thank you for your care.'
+      );
+      return lines.join('\n');
+    }
+
+    function doCopy(text, btn) {
+      const done = () => {
+        const orig = btn.textContent;
+        btn.textContent = 'Copied \u2713';
+        setTimeout(() => {
+          btn.textContent = orig;
+        }, 1600);
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done).catch(done);
+      } else {
+        done();
+      }
+    }
+
+    function renderPreview() {
+      body.innerHTML = '';
+      const text = buildPlanText();
+      const ta = el('textarea', { class: 'plan-textarea bp-preview', rows: '18', readonly: 'readonly' });
+      ta.value = text;
+      const copyBtn = el('button', { class: 'primary', text: 'Copy to clipboard' });
+      copyBtn.addEventListener('click', () => doCopy(text, copyBtn));
+      body.appendChild(
+        el('div', { class: 'card' }, [
+          el('h3', { class: 'card-title', text: 'Your birth plan' }),
+          el('p', {
+            class: 'muted small',
+            text: 'Copy this to share with your team, or take a screenshot. You can keep editing anytime.',
+          }),
+          ta,
+          el('div', { class: 'bp-preview-actions' }, [
+            copyBtn,
+            el('button', {
+              class: 'ghost-btn',
+              text: '\u2039 Back to editing',
+              onClick: () => {
+                previewing = false;
+                render();
+              },
+            }),
+          ]),
+        ])
+      );
+    }
+
+    function render() {
+      if (previewing) return renderPreview();
+      body.innerHTML = '';
+      for (const section of BIRTH_PLAN.sections) body.appendChild(renderSection(section));
+
+      body.appendChild(
+        el('div', { class: 'card bp-forget' }, [
+          el('h3', { class: 'card-title', text: 'Easy to forget' }),
+          el('ul', { class: 'bp-forget-list' }, BIRTH_PLAN.forgotten.map((t) => el('li', { text: t }))),
+        ])
+      );
+
+      const notesArea = el('textarea', {
+        class: 'plan-textarea',
+        rows: '3',
+        placeholder: 'Anything else you want your team to know\u2026',
+      });
+      notesArea.value = plan.notes || '';
+      notesArea.addEventListener('input', () => {
+        plan.notes = notesArea.value;
+      });
+      notesArea.addEventListener('blur', persist);
+      body.appendChild(el('div', { class: 'card' }, [el('h3', { class: 'card-title', text: 'Anything else' }), notesArea]));
+
+      const previewBtn = el('button', {
+        class: 'primary bp-preview-btn',
+        text: 'Preview my plan',
+        onClick: () => {
+          previewing = true;
+          render();
+        },
+      });
+      body.appendChild(previewBtn);
+    }
+
+    render();
+    Store.getSetting('birthPlan').then((saved) => {
+      if (saved) {
+        plan = { checked: saved.checked || {}, custom: saved.custom || {}, notes: saved.notes || '' };
+        render();
+      }
+    });
+  }
+
   function renderToolsView(container) {
     if (state.tool === 'contraction') return renderContractionTimer(container);
     if (state.tool === 'kick') return renderKickCounter(container);
+    if (state.tool === 'birthplan') return renderBirthPlan(container);
 
     const tools = [
       { key: 'contraction', title: 'Contraction timer', desc: 'Time contractions and see how close together they are.' },
       { key: 'kick', title: 'Kick counter', desc: 'Count baby\u2019s movements, with guidance on what to expect.' },
+      { key: 'birthplan', title: 'Birth plan', desc: 'Build your preferences for labor, delivery, and beyond \u2014 with the trade-offs explained.' },
     ];
 
     const list = el('div', { class: 'tool-list' });

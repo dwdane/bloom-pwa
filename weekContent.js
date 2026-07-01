@@ -292,8 +292,8 @@ const WEEK_CONTENT = [
   },
   {
     week: 23,
-    fruit: "a large tomato",
-    emoji: "🍅",
+    fruit: "an ear of corn",
+    emoji: "🌽",
     lengthCm: 28.9,
     weightG: 500.0,
     headToHeel: true,

@@ -28,7 +28,9 @@ lightweight web companion to the native Bloom app.
   highlights the good moments, gentle "things that may help" suggestions appear
   for symptoms, you can review and delete a day's entries, and collapsible trends
   show weight, bump, and how you've been feeling over time.
-- **Tools** — a contraction timer and a kick counter, each with plain guidance
+- **Tools** — a contraction timer, a kick counter, and a full birth-plan builder
+  (curated choices per stage, balanced trade-off notes, reflective prompts, and a
+  copyable plan for your care team), each with plain guidance
   and clear "when to call your provider" advice.
 - **Lists** — flexible, named, collapsible checklists plus a free-notes pad.
   Start from generous templates (hospital bag, birth preferences, doctor
@@ -141,6 +143,7 @@ Open `http://127.0.0.1:8000`.
 | `gestational.js` | Pregnancy dating math |
 | `charts.js` | Canvas trend + bar charts |
 | `db.js` | IndexedDB layer (day- and week-scoped queries) |
+| `birthPlan.js` | Birth plan content: stages, options, trade-off notes, prompts |
 | `app.js` | Views, daily tracking, tools, and navigation |
 | `sw.js` | Service worker (offline) |
 | `manifest.json`, `icon-*.png` | Install assets |

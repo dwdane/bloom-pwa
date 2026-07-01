@@ -140,7 +140,7 @@ body {
   color: var(--ink);
   border: none;
   padding: 18px 20px;
-  font-size: 0.95rem;
+  font-size: 1rem;
   font-weight: 600;
   cursor: pointer;
 }
@@ -599,7 +599,7 @@ button { font-family: inherit; }
   background: transparent;
   color: var(--accent);
   font-weight: 600;
-  font-size: 0.95rem;
+  font-size: 1rem;
   cursor: pointer;
   padding: 4px 6px 4px 0;
 }
@@ -660,7 +660,7 @@ button { font-family: inherit; }
   border-radius: 12px;
   padding: 12px 14px;
   font-family: inherit;
-  font-size: 0.95rem;
+  font-size: 1rem;
   background: var(--surface);
   color: var(--ink);
   resize: vertical;
@@ -827,7 +827,7 @@ button { font-family: inherit; }
 }
 .cal-dow { font-size: 0.66rem; color: var(--muted); font-weight: 600; }
 .cal-date {
-  font-size: 0.95rem;
+  font-size: 1rem;
   font-weight: 600;
   width: 30px;
   height: 30px;
@@ -1144,8 +1144,8 @@ button { font-family: inherit; }
   border-radius: 9px; color: var(--muted); font-size: 12.5px; line-height: 1.5; font-weight: 400;
 }
 .bp-del {
-  flex: 0 0 auto; width: 28px; height: 28px; border: none; border-radius: 50%;
-  background: var(--accent-soft); color: var(--accent-ink); font-size: 18px; line-height: 1;
+  flex: 0 0 auto; width: 32px; height: 32px; border: none; border-radius: 50%;
+  background: var(--accent-soft); color: var(--accent-ink); font-size: 19px; line-height: 1;
   cursor: pointer; padding: 0; transition: background .12s, color .12s;
 }
 .bp-del:hover { background: var(--accent); color: #fff; }
@@ -1154,13 +1154,19 @@ button { font-family: inherit; }
 .bp-select {
   width: 100%; appearance: none; -webkit-appearance: none;
   border: 1.5px solid var(--accent); border-radius: 12px; padding: 11px 38px 11px 14px;
-  font-family: inherit; font-size: 14px; font-weight: 600; color: var(--accent-ink);
+  font-family: inherit; font-size: 16px; font-weight: 600; color: var(--accent-ink);
   background-color: var(--surface);
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%23b5739d' d='M1 1l5 5 5-5'/%3E%3C/svg%3E");
   background-repeat: no-repeat; background-position: right 14px center; cursor: pointer;
 }
-.bp-add-input { font-size: 14px; padding: 10px 12px; }
+.bp-add-input { padding: 10px 12px; }
 .bp-preview { width: 100%; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12.5px; line-height: 1.5; white-space: pre; }
 .bp-preview-actions { display: flex; gap: 10px; align-items: center; margin-top: 10px; flex-wrap: wrap; }
 .bp-preview-btn { width: 100%; margin-top: 4px; }
 .ghost-btn { background: none; border: 1px solid var(--line); color: var(--ink); border-radius: 10px; padding: 10px 14px; cursor: pointer; font-family: inherit; font-size: 14px; }
+
+@media (prefers-color-scheme: dark) {
+  .bp-select {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%23cf93ba' d='M1 1l5 5 5-5'/%3E%3C/svg%3E");
+  }
+}

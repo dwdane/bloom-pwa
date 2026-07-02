@@ -5,7 +5,7 @@
 
 (() => {
   const root = document.getElementById('app');
-  const APP_VERSION = 'v27';
+  const APP_VERSION = 'v28';
 
   const state = {
     dating: { lmp: null, ultrasoundDueDate: null },
@@ -19,7 +19,13 @@
     tool: null, // within Tools: 'contraction' | 'kick' | 'birthplan' | 'questions'
     logTab: 'feelings', // within Log: 'feelings' | 'weight' | 'bump'
     logDate: null, // selected day (ISO) for daily logging; defaults to today
+    lifeStage: 'pregnancy', // 'pregnancy' | 'baby'
+    child: null, // { birthDate, birthTime, gaDays } once baby arrives
+    babyDay: null, // selected day (ISO) for the baby Day view
   };
+
+  // Whether the browser granted persistent storage (null until known).
+  let persistGranted = null;
 
   // Live timers (contraction/kick displays) that must be stopped when the view
   // is torn down, so they don't fire against removed DOM nodes.
@@ -336,14 +342,36 @@
     else if (state.view === 'lists') renderListsView(content);
     else if (state.view === 'food') renderFoodView(content);
     else if (state.view === 'settings') renderSettingsView(content);
+    else if (state.view === 'home') renderBabyHome(content);
+    else if (state.view === 'day') renderBabyDay(content);
+    else if (state.view === 'growth') renderBabyGrowth(content);
+    else if (state.view === 'arrival') renderArrivalView(content);
 
-    const nav = el('nav', { class: 'tabbar' }, [
-      navItem('week', 'Week', '<rect x="3" y="4" width="18" height="18" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="16" y1="2" x2="16" y2="6"/>'),
-      navItem('log', 'Log', '<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>'),
-      navItem('tools', 'Tools', '<path d="M14.7 6.3a4 4 0 0 1-5.4 5.3L4 17v3h3l5.4-5.3a4 4 0 0 1 5.3-5.4l-2.6 2.6-2-2 2.6-2.6Z"/>'),
-      navItem('lists', 'Lists', '<line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><polyline points="3 6 4 7 6 5"/><polyline points="3 12 4 13 6 11"/><line x1="3" y1="18" x2="3.01" y2="18"/>'),
-      navItem('food', 'Food', '<path d="M3 2v7a3 3 0 0 0 6 0V2"/><line x1="6" y1="9" x2="6" y2="22"/><path d="M17 2c-1.5 1-2 3-2 5s.5 4 2 5v10"/>'),
-    ]);
+    if (state.view === 'week') {
+      maybeArrivalPrompt(content);
+      journeyBanner(content);
+    }
+
+    const toolsIcon = '<path d="M14.7 6.3a4 4 0 0 1-5.4 5.3L4 17v3h3l5.4-5.3a4 4 0 0 1 5.3-5.4l-2.6 2.6-2-2 2.6-2.6Z"/>';
+    const listsIcon = '<line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><polyline points="3 6 4 7 6 5"/><polyline points="3 12 4 13 6 11"/><line x1="3" y1="18" x2="3.01" y2="18"/>';
+    const foodIcon = '<path d="M3 2v7a3 3 0 0 0 6 0V2"/><line x1="6" y1="9" x2="6" y2="22"/><path d="M17 2c-1.5 1-2 3-2 5s.5 4 2 5v10"/>';
+    const navItems =
+      state.lifeStage === 'baby'
+        ? [
+            navItem('home', 'Home', '<path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l8.8 8.8 8.8-8.8a5.5 5.5 0 0 0 0-7.8Z"/>'),
+            navItem('day', 'Day', '<circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/>'),
+            navItem('tools', 'Tools', toolsIcon),
+            navItem('lists', 'Lists', listsIcon),
+            navItem('food', 'Food', foodIcon),
+          ]
+        : [
+            navItem('week', 'Week', '<rect x="3" y="4" width="18" height="18" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="16" y1="2" x2="16" y2="6"/>'),
+            navItem('log', 'Log', '<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>'),
+            navItem('tools', 'Tools', toolsIcon),
+            navItem('lists', 'Lists', listsIcon),
+            navItem('food', 'Food', foodIcon),
+          ];
+    const nav = el('nav', { class: 'tabbar' }, navItems);
 
     root.appendChild(content);
     root.appendChild(nav);
@@ -591,6 +619,7 @@
   }
 
   async function maybeCelebrateNewWeek() {
+    if (state.lifeStage === 'baby') return;
     const wk = currentWeek();
     const lastSeen = await Store.getSetting('lastSeenWeek');
     if (lastSeen == null) {
@@ -754,7 +783,7 @@
   function renderWeekView(container) {
     const age = ageAt(state.dating);
     const liveWeek = age ? age.weeks : WEEK_MIN;
-    const week = state.viewWeek != null ? state.viewWeek : liveWeek;
+    const week = state.viewWeek != null ? state.viewWeek : Math.min(liveWeek, WEEK_MAX);
     const info = weekContentFor(week);
     const due = dueDate(state.dating);
     const remaining = daysRemaining(state.dating);
@@ -1823,6 +1852,1023 @@
     });
   }
 
+  // ===========================================================================
+  // Baby mode — care logging, day timeline, growth, arrival flow, and backup.
+  // Activated when life stage flips to 'baby'; pregnancy data stays intact and
+  // viewable as the "pregnancy journey".
+  // ===========================================================================
+
+  const CHILD_ID = 'c1';
+  const ML_PER_OZ = 29.5735;
+  const HOUR_MS = 3600000;
+
+  function fmtAmount(ml) {
+    if (ml == null) return '';
+    return state.imperial ? (ml / ML_PER_OZ).toFixed(1) + ' oz' : Math.round(ml) + ' ml';
+  }
+
+  function durShort(ms) {
+    const m = Math.max(0, Math.round(ms / 60000));
+    if (m < 60) return m + 'm';
+    return Math.floor(m / 60) + 'h ' + (m % 60) + 'm';
+  }
+
+  function clockStr(ts) {
+    return new Date(ts).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  }
+
+  function timeAgo(ts) {
+    return durShort(Date.now() - ts) + ' ago';
+  }
+
+  function childBirthDate() {
+    return state.child ? new Date(state.child.birthDate + 'T00:00:00') : null;
+  }
+
+  function childAgeText() {
+    const b = childBirthDate();
+    if (!b) return '';
+    const d = Math.floor((midnight(new Date()) - midnight(b)) / MS_DAY);
+    if (d <= 0) return 'Born today';
+    if (d === 1) return '1 day old';
+    if (d < 21) return d + ' days old';
+    if (d < 112) {
+      const w = Math.floor(d / 7);
+      const r = d % 7;
+      return w + 'w' + (r ? ' ' + r + 'd' : '') + ' old';
+    }
+    return Math.floor(d / 30.44) + ' months old';
+  }
+
+  async function saveEvent(ev) {
+    await Store.putEvent({ id: uid(), childId: CHILD_ID, notes: null, ...ev });
+  }
+
+  function dayBounds(dayIso) {
+    const start = new Date(dayIso + 'T00:00:00').getTime();
+    return { start, end: start + MS_DAY };
+  }
+
+  // Events overlapping a given day (a sleep that started the evening before
+  // still belongs to today's picture). Lower bound widened to catch spans.
+  async function eventsForDay(dayIso) {
+    const { start, end } = dayBounds(dayIso);
+    const rows = await Store.eventsInRange(start - 36 * HOUR_MS, end - 1);
+    return rows.filter((e) => e.start < end && (e.end || e.start) >= start);
+  }
+
+  function sleepMsInDay(events, dayIso, activeSleep) {
+    const { start, end } = dayBounds(dayIso);
+    let total = 0;
+    for (const e of events) {
+      if (e.type !== 'sleep' || !e.end) continue;
+      total += Math.max(0, Math.min(e.end, end) - Math.max(e.start, start));
+    }
+    if (activeSleep) {
+      const now = Date.now();
+      if (activeSleep.start < end && now >= start) {
+        total += Math.max(0, Math.min(now, end) - Math.max(activeSleep.start, start));
+      }
+    }
+    return total;
+  }
+
+  function daySummary(events, dayIso, activeSleep) {
+    const feeds = events.filter((e) => e.type === 'nurse' || e.type === 'bottle').length;
+    const diapers = events.filter((e) => e.type === 'diaper').length;
+    const bottleMl = events.filter((e) => e.type === 'bottle').reduce((n, e) => n + (e.amountMl || 0), 0);
+    const pumpMl = events.filter((e) => e.type === 'pump').reduce((n, e) => n + (e.amountMl || 0), 0);
+    const sleepMs = sleepMsInDay(events, dayIso, activeSleep);
+    return { feeds, diapers, bottleMl, pumpMl, sleepMs };
+  }
+
+  function summaryLine(sum) {
+    return 'Sleep ' + durShort(sum.sleepMs) + ' \u00b7 Feeds ' + sum.feeds + ' \u00b7 Diapers ' + sum.diapers;
+  }
+
+  function eventDesc(e) {
+    if (e.type === 'nurse') {
+      const side = e.side === 'L' ? 'left' : 'right';
+      return 'Nursed ' + side + (e.end ? ' \u00b7 ' + durShort(e.end - e.start) : '');
+    }
+    if (e.type === 'bottle') return 'Bottle \u00b7 ' + fmtAmount(e.amountMl);
+    if (e.type === 'pump') {
+      const side = e.side === 'L' ? ' left' : e.side === 'R' ? ' right' : '';
+      return 'Pumped' + side + ' \u00b7 ' + fmtAmount(e.amountMl);
+    }
+    if (e.type === 'sleep') return 'Sleep' + (e.end ? ' \u00b7 ' + durShort(e.end - e.start) : '');
+    if (e.type === 'diaper') return 'Diaper \u00b7 ' + (e.kind || '');
+    return e.type;
+  }
+
+  function eventTimeLabel(e) {
+    if (e.type === 'sleep' || e.type === 'nurse') {
+      return clockStr(e.start) + '\u2013' + (e.end ? clockStr(e.end) : 'now');
+    }
+    return clockStr(e.start);
+  }
+
+  // Two-tap confirmation: first tap arms the button, second tap commits.
+  function twoTap(btn, armedText, fn) {
+    let armed = false;
+    let original = null;
+    let timer = null;
+    const reset = () => {
+      armed = false;
+      if (original != null) btn.textContent = original;
+      btn.classList.remove('armed');
+      if (timer) clearTimeout(timer);
+      timer = null;
+    };
+    btn.addEventListener('click', () => {
+      if (!armed) {
+        armed = true;
+        original = btn.textContent;
+        btn.textContent = armedText;
+        btn.classList.add('armed');
+        timer = setTimeout(reset, 3500);
+      } else {
+        reset();
+        fn();
+      }
+    });
+    return btn;
+  }
+
+  // --- arrival ---
+
+  function maybeArrivalPrompt(content) {
+    if (state.lifeStage !== 'pregnancy') return;
+    const age = ageAt(state.dating);
+    if (!age || age.weeks < 39) return;
+    const due = dueDate(state.dating);
+    const overdue = due ? midnight(new Date()) > midnight(due) : false;
+    const card = el('div', { class: 'card arrive-card' }, [
+      el('h3', { class: 'card-title', text: overdue ? 'Any day now' : 'Almost there' }),
+      el('p', {
+        class: 'muted small',
+        text: (overdue
+          ? 'Past the due date is still right on time \u2014 babies keep their own schedule. '
+          : 'No pressure \u2014 ') +
+          'Whenever ' + babyLabel() + ' arrives, tap below and Bloom grows into a baby tracker. Nothing to reinstall.',
+      }),
+      el('button', {
+        class: 'primary',
+        text: 'Baby has arrived',
+        onClick: () => {
+          state.prevView = 'week';
+          state.view = 'arrival';
+          renderApp();
+        },
+      }),
+    ]);
+    const target = content.firstElementChild || content;
+    target.insertBefore(card, target.children[1] || null);
+  }
+
+  function journeyBanner(content) {
+    if (state.lifeStage !== 'baby') return;
+    const card = el('div', { class: 'card arrive-card' }, [
+      el('p', { class: 'muted small', text: 'You\u2019re looking back at the pregnancy journey.' }),
+      el('button', {
+        class: 'secondary compact',
+        text: '\u2039 Back to ' + babyLabel(),
+        onClick: () => {
+          state.view = 'home';
+          renderApp();
+        },
+      }),
+    ]);
+    const target = content.firstElementChild || content;
+    target.insertBefore(card, target.children[1] || null);
+  }
+
+  function renderArrivalView(container) {
+    const backHeader = el('header', { class: 'app-header tool-header' }, [
+      el('button', {
+        class: 'back-btn',
+        text: '\u2039 Back',
+        onClick: () => {
+          state.view = state.prevView || 'week';
+          renderApp();
+        },
+      }),
+      el('h1', { class: 'app-title', text: 'Baby has arrived' }),
+    ]);
+    const wrap = el('div', { class: 'wrap' }, [backHeader]);
+    container.appendChild(wrap);
+
+    const dateInput = el('input', { type: 'date', value: todayISO(), max: todayISO() });
+    const timeInput = el('input', { type: 'time' });
+    const error = el('p', { class: 'error' });
+
+    wrap.appendChild(
+      el('div', { class: 'card' }, [
+        el('h3', { class: 'card-title', text: 'The big moment' }),
+        el('p', {
+          class: 'muted small',
+          text: 'Congratulations. Enter the birth date and Bloom becomes ' + babyLabel() + '\u2019s tracker \u2014 feeds, sleep, diapers, and growth. Everything can be adjusted later in Settings.',
+        }),
+        el('label', { class: 'field-label', text: 'Birth date' }),
+        dateInput,
+        el('label', { class: 'field-label', text: 'Time of birth (optional)' }),
+        timeInput,
+        error,
+        el('button', {
+          class: 'primary',
+          text: 'Start baby mode',
+          onClick: async () => {
+            const iso = dateInput.value;
+            if (!iso) {
+              error.textContent = 'Enter the birth date.';
+              return;
+            }
+            const birth = parseDateInput(iso);
+            const due = dueDate(state.dating);
+            const gaDays = due
+              ? 280 - Math.round((midnight(due) - midnight(birth)) / MS_DAY)
+              : null;
+            const child = { birthDate: iso, birthTime: timeInput.value || null, gaDays };
+            await Store.setSetting('child', child);
+            await Store.setSetting('lifeStage', 'baby');
+            await Store.setSetting('arrivalSeen', false);
+            state.child = child;
+            state.lifeStage = 'baby';
+            state.babyDay = todayISO();
+            state.view = 'home';
+            renderApp();
+            emojiRain('\ud83c\udf38', 'Welcome, ' + babyLabel(), 'From bloom to blossom.');
+          },
+        }),
+      ])
+    );
+  }
+
+  // --- baby home ---
+
+  function renderBabyHome(container) {
+    const wrap = el('div', { class: 'wrap' }, [viewHeader(babyLabel())]);
+    container.appendChild(wrap);
+    const body = el('div', {});
+    wrap.appendChild(body);
+
+    const now = Date.now();
+    Promise.all([
+      Store.getSetting('activeNurse'),
+      Store.getSetting('activeSleep'),
+      Store.getSetting('arrivalSeen'),
+      Store.getSetting('lastBottleMl'),
+      Store.getSetting('lastPumpMl'),
+      Store.eventsInRange(now - 48 * HOUR_MS, now + 60000),
+      Store.allMeasurements(),
+    ]).then(([activeNurse, activeSleep, arrivalSeen, lastBottleMl, lastPumpMl, recent, measurements]) => {
+      const todayIso = todayISO();
+      const { start: dayStart, end: dayEnd } = dayBounds(todayIso);
+      const todays = recent.filter((e) => e.start < dayEnd && (e.end || e.start) >= dayStart);
+
+      if (arrivalSeen === false) {
+        body.appendChild(
+          el('div', { class: 'card welcome-card' }, [
+            el('h3', { class: 'card-title', text: 'Welcome, ' + babyLabel() }),
+            el('p', {
+              class: 'muted small',
+              text: 'From bloom to blossom. Log feeds, sleep, and diapers below \u2014 anything can be removed from the Day tab, and the pregnancy journey lives on in Settings.',
+            }),
+            el('button', {
+              class: 'secondary compact',
+              text: 'Got it',
+              onClick: async () => {
+                await Store.setSetting('arrivalSeen', true);
+                renderApp();
+              },
+            }),
+          ])
+        );
+      }
+
+      // --- Right now ---
+      const ageLine = el('p', { class: 'muted small', text: childAgeText() });
+      const sleepLine = el('p', { class: 'status-line' });
+      const feedLine = el('p', { class: 'status-line' });
+      const diaperLine = el('p', { class: 'status-line' });
+
+      function refreshStatus() {
+        const t = Date.now();
+        if (activeSleep) {
+          sleepLine.textContent = 'Asleep \u00b7 ' + durShort(t - activeSleep.start);
+        } else {
+          const ended = recent.filter((e) => e.type === 'sleep' && e.end).sort((a, b) => b.end - a.end)[0];
+          sleepLine.textContent = ended ? 'Awake for ' + durShort(t - ended.end) : 'No sleep logged yet';
+        }
+        const feeds = recent
+          .filter((e) => e.type === 'nurse' || e.type === 'bottle')
+          .sort((a, b) => (b.end || b.start) - (a.end || a.start));
+        if (activeNurse) {
+          feedLine.textContent = 'Nursing now \u00b7 ' + (activeNurse.side === 'L' ? 'left' : 'right');
+        } else if (feeds.length) {
+          const f = feeds[0];
+          feedLine.textContent = 'Last feed: ' + eventDesc(f) + ' \u00b7 ' + timeAgo(f.end || f.start);
+        } else {
+          feedLine.textContent = 'No feeds logged yet';
+        }
+        const d = todays.filter((e) => e.type === 'diaper');
+        const wet = d.filter((e) => e.kind === 'wet' || e.kind === 'both').length;
+        const dirty = d.filter((e) => e.kind === 'dirty' || e.kind === 'both').length;
+        diaperLine.textContent = 'Diapers today: ' + d.length + (d.length ? ' (' + wet + ' wet \u00b7 ' + dirty + ' dirty)' : '');
+      }
+      refreshStatus();
+      trackInterval(setInterval(refreshStatus, 30000));
+
+      body.appendChild(
+        el('div', { class: 'card' }, [
+          el('h3', { class: 'card-title', text: 'Right now' }),
+          ageLine,
+          sleepLine,
+          feedLine,
+          diaperLine,
+        ])
+      );
+
+      // --- Log ---
+      const logCard = el('div', { class: 'card' }, [el('h3', { class: 'card-title', text: 'Log' })]);
+      body.appendChild(logCard);
+
+      function timerCard(kind, data) {
+        const isNurse = kind === 'nurse';
+        const box = el('div', { class: 'timer-card' });
+        const big = el('p', { class: 'timer-big', text: durShort(Date.now() - data.start) });
+        const sub = el('p', { class: 'timer-sub', text: 'Started ' + clockStr(data.start) });
+        box.appendChild(
+          el('p', { class: 'timer-title', text: isNurse ? 'Nursing \u2014 ' + (data.side === 'L' ? 'Left' : 'Right') : 'Sleeping' })
+        );
+        box.appendChild(big);
+        box.appendChild(sub);
+        trackInterval(setInterval(() => {
+          big.textContent = durShort(Date.now() - data.start);
+        }, 1000));
+
+        const settingKey = isNurse ? 'activeNurse' : 'activeSleep';
+        async function shiftStart(mins) {
+          const next = Math.min(data.start + mins * 60000, Date.now() - 60000);
+          data.start = next;
+          await Store.setSetting(settingKey, data);
+          sub.textContent = 'Started ' + clockStr(data.start);
+          big.textContent = durShort(Date.now() - data.start);
+        }
+        box.appendChild(
+          el('div', { class: 'adjust-row' }, [
+            el('button', { class: 'adjust-btn', text: 'Started 5m earlier', onClick: () => shiftStart(-5) }),
+            el('button', { class: 'adjust-btn', text: '5m later', onClick: () => shiftStart(5) }),
+          ])
+        );
+
+        const actions = el('div', { class: 'timer-actions' });
+        actions.appendChild(
+          el('button', {
+            class: 'primary compact',
+            text: isNurse ? 'Stop & save' : 'Awake \u2014 save',
+            onClick: async () => {
+              const ev = isNurse
+                ? { type: 'nurse', side: data.side, start: data.start, end: Date.now() }
+                : { type: 'sleep', start: data.start, end: Date.now() };
+              await saveEvent(ev);
+              await Store.setSetting(settingKey, null);
+              toast(isNurse ? 'Feed saved' : 'Sleep saved');
+              renderApp();
+            },
+          })
+        );
+        if (isNurse) {
+          actions.appendChild(
+            el('button', {
+              class: 'secondary compact',
+              text: 'Switch side',
+              onClick: async () => {
+                await saveEvent({ type: 'nurse', side: data.side, start: data.start, end: Date.now() });
+                await Store.setSetting('activeNurse', { side: data.side === 'L' ? 'R' : 'L', start: Date.now() });
+                renderApp();
+              },
+            })
+          );
+        }
+        actions.appendChild(
+          twoTap(
+            el('button', { class: 'ghost-btn compact', text: 'Discard' }),
+            'Discard?',
+            async () => {
+              await Store.setSetting(settingKey, null);
+              renderApp();
+            }
+          )
+        );
+        box.appendChild(actions);
+        return box;
+      }
+
+      // Nursing
+      if (activeNurse) {
+        logCard.appendChild(timerCard('nurse', activeNurse));
+      } else {
+        const lastNurse = recent.filter((e) => e.type === 'nurse').sort((a, b) => b.start - a.start)[0];
+        const suggest = lastNurse ? (lastNurse.side === 'L' ? 'R' : 'L') : null;
+        const startNurse = (side) => async () => {
+          await Store.setSetting('activeNurse', { side, start: Date.now() });
+          renderApp();
+        };
+        const grid = el('div', { class: 'baby-grid' }, [
+          el('button', { class: 'baby-btn' + (suggest === 'L' ? ' suggest' : ''), text: 'Nurse \u00b7 Left', onClick: startNurse('L') }),
+          el('button', { class: 'baby-btn' + (suggest === 'R' ? ' suggest' : ''), text: 'Nurse \u00b7 Right', onClick: startNurse('R') }),
+        ]);
+        logCard.appendChild(grid);
+        if (lastNurse) {
+          logCard.appendChild(
+            el('p', { class: 'baby-caption', text: 'Last side: ' + (lastNurse.side === 'L' ? 'left' : 'right') + ' \u00b7 ' + timeAgo(lastNurse.end || lastNurse.start) })
+          );
+        }
+      }
+
+      // Sleep
+      if (activeSleep) {
+        logCard.appendChild(timerCard('sleep', activeSleep));
+      } else {
+        logCard.appendChild(
+          el('div', { class: 'baby-grid' }, [
+            el('button', {
+              class: 'baby-btn full',
+              text: 'Start sleep',
+              onClick: async () => {
+                await Store.setSetting('activeSleep', { start: Date.now() });
+                renderApp();
+              },
+            }),
+          ])
+        );
+      }
+
+      // Bottle / pump entry panels
+      function amountPanel(opts) {
+        const panel = el('div', { class: 'panel' });
+        panel.style.display = 'none';
+        let ml = opts.initialMl;
+        const step = state.imperial ? ML_PER_OZ / 2 : 10;
+        const val = el('span', { class: 'step-val', text: fmtAmount(ml) });
+        const bump = (dir) => () => {
+          ml = Math.max(step, ml + dir * step);
+          val.textContent = fmtAmount(ml);
+        };
+        panel.appendChild(
+          el('div', { class: 'stepper' }, [
+            el('button', { class: 'step-btn', text: '\u2212', onClick: bump(-1) }),
+            val,
+            el('button', { class: 'step-btn', text: '+', onClick: bump(1) }),
+          ])
+        );
+        let side = 'both';
+        if (opts.sides) {
+          const seg = el('div', { class: 'segmented pump-seg' });
+          for (const [key, label] of [['L', 'Left'], ['R', 'Right'], ['both', 'Both']]) {
+            const b = el('button', {
+              class: 'seg-btn' + (key === side ? ' active' : ''),
+              text: label,
+              onClick: () => {
+                side = key;
+                [...seg.children].forEach((c) => c.classList.toggle('active', c.dataset.s === key));
+              },
+            });
+            b.dataset.s = key;
+            seg.appendChild(b);
+          }
+          panel.appendChild(seg);
+        }
+        panel.appendChild(
+          el('div', { class: 'panel-actions' }, [
+            el('button', {
+              class: 'primary compact',
+              text: 'Save',
+              onClick: async () => {
+                await opts.save(Math.round(ml), side);
+                toast(opts.savedText);
+                renderApp();
+              },
+            }),
+            el('button', {
+              class: 'ghost-btn compact',
+              text: 'Close',
+              onClick: () => {
+                panel.style.display = 'none';
+              },
+            }),
+          ])
+        );
+        return panel;
+      }
+
+      const bottlePanel = amountPanel({
+        initialMl: lastBottleMl || 90,
+        savedText: 'Bottle saved',
+        save: async (ml) => {
+          await saveEvent({ type: 'bottle', start: Date.now(), end: null, amountMl: ml });
+          await Store.setSetting('lastBottleMl', ml);
+        },
+      });
+      const pumpPanel = amountPanel({
+        initialMl: lastPumpMl || 120,
+        sides: true,
+        savedText: 'Pump saved',
+        save: async (ml, side) => {
+          await saveEvent({ type: 'pump', start: Date.now(), end: null, amountMl: ml, side });
+          await Store.setSetting('lastPumpMl', ml);
+        },
+      });
+
+      logCard.appendChild(
+        el('div', { class: 'baby-grid' }, [
+          el('button', {
+            class: 'baby-btn',
+            text: 'Bottle',
+            onClick: () => {
+              bottlePanel.style.display = bottlePanel.style.display === 'none' ? '' : 'none';
+              pumpPanel.style.display = 'none';
+            },
+          }),
+          el('button', {
+            class: 'baby-btn',
+            text: 'Pump',
+            onClick: () => {
+              pumpPanel.style.display = pumpPanel.style.display === 'none' ? '' : 'none';
+              bottlePanel.style.display = 'none';
+            },
+          }),
+        ])
+      );
+      logCard.appendChild(bottlePanel);
+      logCard.appendChild(pumpPanel);
+
+      // Diapers
+      const diaperBtn = (kind, label) =>
+        el('button', {
+          class: 'baby-btn',
+          text: label,
+          onClick: async () => {
+            await saveEvent({ type: 'diaper', start: Date.now(), end: null, kind });
+            toast('Diaper logged \u00b7 ' + kind);
+            renderApp();
+          },
+        });
+      logCard.appendChild(el('p', { class: 'baby-caption', text: 'Diaper' }));
+      logCard.appendChild(
+        el('div', { class: 'diaper-row' }, [diaperBtn('wet', 'Wet'), diaperBtn('dirty', 'Dirty'), diaperBtn('both', 'Both')])
+      );
+
+      // --- Today totals ---
+      const sum = daySummary(todays, todayIso, activeSleep);
+      const totalsCard = el('div', { class: 'card tap-card' }, [
+        el('h3', { class: 'card-title', text: 'Today' }),
+        el('p', { class: 'status-line', text: summaryLine(sum) }),
+      ]);
+      if (sum.bottleMl || sum.pumpMl) {
+        totalsCard.appendChild(
+          el('p', {
+            class: 'muted small',
+            text: (sum.bottleMl ? 'Bottles ' + fmtAmount(sum.bottleMl) : '') +
+              (sum.bottleMl && sum.pumpMl ? ' \u00b7 ' : '') +
+              (sum.pumpMl ? 'Pumped ' + fmtAmount(sum.pumpMl) : ''),
+          })
+        );
+      }
+      totalsCard.appendChild(
+        el('button', {
+          class: 'secondary compact',
+          text: 'Open day view',
+          onClick: () => {
+            state.babyDay = todayIso;
+            state.view = 'day';
+            renderApp();
+          },
+        })
+      );
+      body.appendChild(totalsCard);
+
+      // --- Growth teaser ---
+      const lastM = measurements[measurements.length - 1];
+      body.appendChild(
+        el('div', { class: 'card' }, [
+          el('h3', { class: 'card-title', text: 'Growth' }),
+          el('p', {
+            class: 'muted small',
+            text: lastM ? 'Last: ' + measurementText(lastM) : 'No measurements yet \u2014 add weight, length, and head size.',
+          }),
+          el('button', {
+            class: 'secondary compact',
+            text: lastM ? 'Add / view' : 'Add first measurement',
+            onClick: () => {
+              state.view = 'growth';
+              renderApp();
+            },
+          }),
+        ])
+      );
+    });
+  }
+
+  // --- day view ---
+
+  function renderBabyDay(container) {
+    const wrap = el('div', { class: 'wrap' }, [viewHeader('Day')]);
+    container.appendChild(wrap);
+
+    const dayIso = state.babyDay || todayISO();
+    const isToday = dayIso === todayISO();
+    const d = new Date(dayIso + 'T00:00:00');
+    const label = d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' }) + (isToday ? ' \u00b7 Today' : '');
+
+    const go = (n) => () => {
+      state.babyDay = isoDate(addDays(new Date(dayIso + 'T00:00:00'), n));
+      renderApp();
+    };
+    wrap.appendChild(
+      el('div', { class: 'day-nav' }, [
+        el('button', { class: 'day-arrow', text: '\u2039', 'aria-label': 'Previous day', onClick: go(-1) }),
+        el('span', { class: 'day-label', text: label }),
+        (() => {
+          const b = el('button', { class: 'day-arrow', text: '\u203a', 'aria-label': 'Next day', onClick: go(1) });
+          if (isToday) b.disabled = true;
+          return b;
+        })(),
+      ])
+    );
+
+    const body = el('div', {});
+    wrap.appendChild(body);
+
+    Promise.all([
+      eventsForDay(dayIso),
+      Store.getSetting('activeNurse'),
+      Store.getSetting('activeSleep'),
+    ]).then(([events, activeNurse, activeSleep]) => {
+      const sum = daySummary(events, dayIso, isToday ? activeSleep : null);
+      const totals = el('div', { class: 'card' }, [
+        el('h3', { class: 'card-title', text: 'Totals' }),
+        el('p', { class: 'status-line', text: summaryLine(sum) }),
+      ]);
+      if (sum.bottleMl || sum.pumpMl) {
+        totals.appendChild(
+          el('p', {
+            class: 'muted small',
+            text: (sum.bottleMl ? 'Bottles ' + fmtAmount(sum.bottleMl) : '') +
+              (sum.bottleMl && sum.pumpMl ? ' \u00b7 ' : '') +
+              (sum.pumpMl ? 'Pumped ' + fmtAmount(sum.pumpMl) : ''),
+          })
+        );
+      }
+      body.appendChild(totals);
+
+      const list = el('div', { class: 'card' }, [el('h3', { class: 'card-title', text: 'Timeline' })]);
+      body.appendChild(list);
+
+      const rows = [];
+      if (isToday && activeNurse) rows.push({ live: true, type: 'nurse', side: activeNurse.side, start: activeNurse.start, end: null });
+      if (isToday && activeSleep) rows.push({ live: true, type: 'sleep', start: activeSleep.start, end: null });
+      for (const e of events) rows.push(e);
+      rows.sort((a, b) => a.start - b.start);
+
+      if (!rows.length) {
+        list.appendChild(el('p', { class: 'muted small', text: 'Nothing logged this day.' }));
+        return;
+      }
+
+      for (const e of rows) {
+        const main = el('div', { class: 'evt-main' }, [
+          el('span', { class: 'evt-time', text: eventTimeLabel(e) + (e.live ? ' \u00b7 in progress' : '') }),
+          el('span', { class: 'evt-desc', text: eventDesc(e) }),
+        ]);
+        const row = el('div', { class: 'evt-row' }, [el('span', { class: 'evt-dot dot-' + e.type }), main]);
+        if (!e.live) {
+          row.appendChild(
+            twoTap(
+              el('button', { class: 'evt-del', text: '\u00d7', 'aria-label': 'Delete entry' }),
+              'Delete?',
+              async () => {
+                await Store.deleteEvent(e.id);
+                renderApp();
+              }
+            )
+          );
+        }
+        list.appendChild(row);
+      }
+    });
+  }
+
+  // --- growth ---
+
+  function gToLbOz(g) {
+    let totalOz = g / 28.3495;
+    let lb = Math.floor(totalOz / 16);
+    let oz = totalOz - lb * 16;
+    if (oz >= 15.95) {
+      lb += 1;
+      oz = 0;
+    }
+    return { lb, oz };
+  }
+
+  function measurementText(m) {
+    const parts = [];
+    if (m.weightG != null) {
+      if (state.imperial) {
+        const { lb, oz } = gToLbOz(m.weightG);
+        parts.push(lb + ' lb ' + oz.toFixed(1) + ' oz');
+      } else {
+        parts.push((m.weightG / 1000).toFixed(2) + ' kg');
+      }
+    }
+    if (m.lengthCm != null) parts.push(state.imperial ? (m.lengthCm / 2.54).toFixed(1) + ' in' : m.lengthCm.toFixed(1) + ' cm');
+    if (m.headCm != null) parts.push('head ' + (state.imperial ? (m.headCm / 2.54).toFixed(1) + ' in' : m.headCm.toFixed(1) + ' cm'));
+    return parts.join(' \u00b7 ');
+  }
+
+  function renderBabyGrowth(container) {
+    const backHeader = el('header', { class: 'app-header tool-header' }, [
+      el('button', {
+        class: 'back-btn',
+        text: '\u2039 Back',
+        onClick: () => {
+          state.view = 'home';
+          renderApp();
+        },
+      }),
+      el('h1', { class: 'app-title', text: 'Growth' }),
+    ]);
+    const wrap = el('div', { class: 'wrap' }, [backHeader]);
+    container.appendChild(wrap);
+
+    const dateInput = el('input', { type: 'date', value: todayISO(), max: todayISO() });
+    const error = el('p', { class: 'error' });
+    let weightInputs;
+    if (state.imperial) {
+      const lb = el('input', { type: 'number', inputmode: 'decimal', min: '0', step: '1', placeholder: 'lb' });
+      const oz = el('input', { type: 'number', inputmode: 'decimal', min: '0', step: '0.1', placeholder: 'oz' });
+      weightInputs = {
+        row: el('div', { class: 'growth-pair' }, [lb, oz]),
+        grams: () => {
+          const l = parseFloat(lb.value);
+          const o = parseFloat(oz.value);
+          if (isNaN(l) && isNaN(o)) return null;
+          return Math.round(((isNaN(l) ? 0 : l) * 16 + (isNaN(o) ? 0 : o)) * 28.3495);
+        },
+      };
+    } else {
+      const kg = el('input', { type: 'number', inputmode: 'decimal', min: '0', step: '0.01', placeholder: 'kg' });
+      weightInputs = {
+        row: kg,
+        grams: () => {
+          const v = parseFloat(kg.value);
+          return isNaN(v) ? null : Math.round(v * 1000);
+        },
+      };
+    }
+    const lenInput = el('input', { type: 'number', inputmode: 'decimal', min: '0', step: '0.1', placeholder: state.imperial ? 'in' : 'cm' });
+    const headInput = el('input', { type: 'number', inputmode: 'decimal', min: '0', step: '0.1', placeholder: state.imperial ? 'in' : 'cm' });
+    const toCm = (v) => (state.imperial ? v * 2.54 : v);
+
+    wrap.appendChild(
+      el('div', { class: 'card' }, [
+        el('h3', { class: 'card-title', text: 'Add measurement' }),
+        el('label', { class: 'field-label', text: 'Date' }),
+        dateInput,
+        el('label', { class: 'field-label', text: 'Weight' }),
+        weightInputs.row,
+        el('label', { class: 'field-label', text: 'Length' }),
+        lenInput,
+        el('label', { class: 'field-label', text: 'Head circumference' }),
+        headInput,
+        error,
+        el('button', {
+          class: 'primary',
+          text: 'Save',
+          onClick: async () => {
+            const weightG = weightInputs.grams();
+            const lenV = parseFloat(lenInput.value);
+            const headV = parseFloat(headInput.value);
+            const lengthCm = isNaN(lenV) ? null : toCm(lenV);
+            const headCm = isNaN(headV) ? null : toCm(headV);
+            if (weightG == null && lengthCm == null && headCm == null) {
+              error.textContent = 'Enter at least one measurement.';
+              return;
+            }
+            await Store.putMeasurement({ id: uid(), date: dateInput.value || todayISO(), weightG, lengthCm, headCm });
+            toast('Measurement saved');
+            renderApp();
+          },
+        }),
+        el('p', { class: 'muted small', text: 'WHO percentile curves are coming in an update.' }),
+      ])
+    );
+
+    const chartCard = el('div', { class: 'card' }, [el('h3', { class: 'card-title', text: 'Weight trend' })]);
+    const canvas = el('canvas', { class: 'chart-canvas' });
+    const chartNote = el('p', { class: 'muted small' });
+    chartCard.appendChild(canvas);
+    chartCard.appendChild(chartNote);
+    wrap.appendChild(chartCard);
+
+    const listCard = el('div', { class: 'card' }, [el('h3', { class: 'card-title', text: 'History' })]);
+    wrap.appendChild(listCard);
+
+    Store.allMeasurements().then((rows) => {
+      const weights = rows.filter((m) => m.weightG != null);
+      if (weights.length < 2) {
+        canvas.style.display = 'none';
+        chartNote.textContent = weights.length === 0 ? 'No weights yet.' : 'Log once more to see a trend line.';
+      } else {
+        const points = weights.map((m) => ({
+          x: Date.parse(m.date),
+          y: state.imperial ? m.weightG / 453.592 : m.weightG / 1000,
+          label: '',
+        }));
+        chartNote.textContent = state.imperial ? 'Weight in lb' : 'Weight in kg';
+        requestAnimationFrame(() =>
+          drawLineChart(canvas, points, {
+            formatValue: (v) => v.toFixed(1),
+            accent: accentColor(),
+          })
+        );
+      }
+
+      if (!rows.length) {
+        listCard.appendChild(el('p', { class: 'muted small', text: 'Nothing recorded yet.' }));
+        return;
+      }
+      for (const m of [...rows].reverse()) {
+        const main = el('div', { class: 'evt-main' }, [
+          el('span', { class: 'evt-time', text: prettyDate(new Date(m.date + 'T00:00:00')) }),
+          el('span', { class: 'evt-desc', text: measurementText(m) }),
+        ]);
+        listCard.appendChild(
+          el('div', { class: 'evt-row' }, [
+            main,
+            twoTap(
+              el('button', { class: 'evt-del', text: '\u00d7', 'aria-label': 'Delete measurement' }),
+              'Delete?',
+              async () => {
+                await Store.deleteMeasurement(m.id);
+                renderApp();
+              }
+            ),
+          ])
+        );
+      }
+    });
+  }
+
+  // --- settings cards: life stage + backup ---
+
+  function lifeStageCard() {
+    const card = el('div', { class: 'card' }, [el('h3', { class: 'card-title', text: 'Life stage' })]);
+    if (state.lifeStage === 'baby' && state.child) {
+      const birth = new Date(state.child.birthDate + 'T00:00:00');
+      let born = 'Born ' + prettyDate(birth);
+      if (state.child.gaDays != null && state.child.gaDays > 0) {
+        born += ' \u00b7 ' + Math.floor(state.child.gaDays / 7) + 'w ' + (state.child.gaDays % 7) + 'd at birth';
+      }
+      card.appendChild(el('p', { class: 'muted small', text: born }));
+      card.appendChild(
+        el('button', {
+          class: 'secondary compact',
+          text: 'Pregnancy journey',
+          onClick: () => {
+            state.viewWeek = null;
+            state.view = 'week';
+            renderApp();
+          },
+        })
+      );
+      card.appendChild(
+        twoTap(
+          el('button', { class: 'ghost-btn compact stage-switch', text: 'Switch back to pregnancy mode' }),
+          'Tap again to switch',
+          async () => {
+            await Store.setSetting('lifeStage', 'pregnancy');
+            state.lifeStage = 'pregnancy';
+            state.view = 'week';
+            renderApp();
+          }
+        )
+      );
+      card.appendChild(
+        el('p', { class: 'muted small', text: 'Switching back keeps every log \u2014 nothing is deleted.' })
+      );
+    } else {
+      card.appendChild(
+        el('p', {
+          class: 'muted small',
+          text: 'Bloom is in pregnancy mode. When your baby arrives, flip the switch and the app grows with you \u2014 nothing to reinstall.',
+        })
+      );
+      card.appendChild(
+        el('button', {
+          class: 'primary compact',
+          text: 'Baby has arrived',
+          onClick: () => {
+            state.prevView = 'settings';
+            state.view = 'arrival';
+            renderApp();
+          },
+        })
+      );
+    }
+    return card;
+  }
+
+  async function exportBackup(statusEl) {
+    statusEl.textContent = 'Preparing backup\u2026';
+    try {
+      const payload = {
+        app: 'bloom',
+        format: 1,
+        exportedAt: new Date().toISOString(),
+        appVersion: APP_VERSION,
+        data: await Store.exportAll(),
+      };
+      const json = JSON.stringify(payload);
+      const name = 'bloom-backup-' + todayISO() + '.json';
+      const file = new File([json], name, { type: 'application/json' });
+      if (navigator.canShare && navigator.canShare({ files: [file] }) && navigator.share) {
+        try {
+          await navigator.share({ files: [file], title: 'Bloom backup' });
+          statusEl.textContent = 'Backup shared.';
+          return;
+        } catch (e) {
+          if (e && e.name === 'AbortError') {
+            statusEl.textContent = '';
+            return;
+          }
+        }
+      }
+      const url = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
+      const a = el('a', { href: url, download: name });
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 4000);
+      statusEl.textContent = 'Backup downloaded.';
+    } catch (e) {
+      statusEl.textContent = 'Backup failed \u2014 try again.';
+    }
+  }
+
+  async function importBackup(file, statusEl) {
+    try {
+      const text = await file.text();
+      const payload = JSON.parse(text);
+      if (!payload || payload.app !== 'bloom' || !payload.data) {
+        statusEl.textContent = 'That doesn\u2019t look like a Bloom backup.';
+        return;
+      }
+      statusEl.textContent = 'Restoring\u2026';
+      await Store.importAll(payload.data);
+      statusEl.textContent = 'Restored \u2014 reloading\u2026';
+      setTimeout(() => location.reload(), 700);
+    } catch (e) {
+      statusEl.textContent = 'Import failed \u2014 file unreadable.';
+    }
+  }
+
+  function backupCard() {
+    const status = el('p', { class: 'muted small backup-status' });
+    const fileInput = el('input', { type: 'file', accept: 'application/json,.json' });
+    fileInput.style.display = 'none';
+    fileInput.addEventListener('change', () => {
+      if (fileInput.files && fileInput.files[0]) importBackup(fileInput.files[0], status);
+      fileInput.value = '';
+    });
+    const storageLine =
+      persistGranted === true
+        ? 'Storage: persistent \u2713'
+        : persistGranted === false
+          ? 'Storage: best-effort \u2014 export backups regularly.'
+          : 'Storage: checking\u2026';
+    return el('div', { class: 'card' }, [
+      el('h3', { class: 'card-title', text: 'Backup' }),
+      el('p', {
+        class: 'muted small',
+        text: 'Everything lives only on this phone. Export a backup file to iCloud or Files now and then \u2014 it\u2019s also how you move to a new phone.',
+      }),
+      el('div', { class: 'backup-actions' }, [
+        el('button', { class: 'primary compact', text: 'Export backup', onClick: () => exportBackup(status) }),
+        twoTap(
+          el('button', { class: 'secondary compact', text: 'Import backup' }),
+          'Replaces all data \u2014 tap again',
+          () => fileInput.click()
+        ),
+      ]),
+      fileInput,
+      status,
+      el('p', { class: 'muted small', text: storageLine }),
+    ]);
+  }
+
   function renderToolsView(container) {
     if (state.tool === 'contraction') return renderContractionTimer(container);
     if (state.tool === 'kick') return renderKickCounter(container);
@@ -2785,6 +3831,9 @@
       ])
     );
 
+    wrap.appendChild(lifeStageCard());
+    wrap.appendChild(backupCard());
+
     wrap.appendChild(
       el('div', { class: 'card' }, [
         el('h3', { class: 'card-title', text: 'About & privacy' }),
@@ -2927,13 +3976,27 @@
     const units = await Store.getSetting('units');
     const baby = await Store.getSetting('baby');
     const theme = await Store.getSetting('theme');
+    const lifeStage = await Store.getSetting('lifeStage');
+    const child = await Store.getSetting('child');
     if (units) state.imperial = units === 'imperial';
     if (theme === 'sport' || theme === 'fruit') state.theme = theme;
     if (baby) {
       state.babyName = baby.name || '';
       state.gender = baby.gender || 'surprise';
     }
+    if (lifeStage === 'baby' && child) {
+      state.lifeStage = 'baby';
+      state.child = child;
+      state.view = 'home';
+    }
     state.logDate = todayISO();
+    state.babyDay = todayISO();
+
+    if (navigator.storage && navigator.storage.persist) {
+      navigator.storage.persist().then((granted) => {
+        persistGranted = granted;
+      }).catch(() => {});
+    }
 
     if (dating && (dating.lmp || dating.ultrasoundDueDate)) {
       state.dating.lmp = dating.lmp ? new Date(dating.lmp) : null;
@@ -2941,7 +4004,7 @@
         ? new Date(dating.ultrasoundDueDate)
         : null;
       renderApp();
-      maybeCelebrateNewWeek();
+      if (state.lifeStage === 'pregnancy') maybeCelebrateNewWeek();
     } else {
       renderSetup();
     }

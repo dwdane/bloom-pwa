@@ -1170,3 +1170,68 @@ button { font-family: inherit; }
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%23cf93ba' d='M1 1l5 5 5-5'/%3E%3C/svg%3E");
   }
 }
+
+/* --- Baby mode --- */
+.arrive-card, .welcome-card { background: var(--accent-soft); border-color: transparent; }
+.arrive-card .primary, .arrive-card .secondary { margin-top: 8px; }
+.status-line { margin: 6px 0; font-size: 15px; color: var(--ink); }
+.baby-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 8px 0; }
+.baby-btn {
+  min-height: 62px; border: none; border-radius: 14px; background: var(--accent-soft);
+  color: var(--accent-ink); font-family: inherit; font-size: 16px; font-weight: 700;
+  cursor: pointer; padding: 8px;
+}
+.baby-btn.suggest { outline: 2px solid var(--accent); }
+.baby-btn.full { grid-column: 1 / -1; }
+.baby-caption { margin: 2px 0 4px; font-size: 12.5px; color: var(--muted); text-align: center; }
+.diaper-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 4px; }
+.diaper-row .baby-btn { min-height: 52px; }
+.timer-card { background: var(--accent-soft); border-radius: 14px; padding: 14px; margin: 8px 0; text-align: center; }
+.timer-title { font-weight: 700; color: var(--accent-ink); margin: 0 0 2px; font-size: 15px; }
+.timer-big { font-size: 30px; font-weight: 700; color: var(--accent-ink); font-variant-numeric: tabular-nums; margin: 2px 0; }
+.timer-sub { font-size: 12.5px; color: var(--muted); margin: 0 0 8px; }
+.adjust-row { display: flex; gap: 8px; justify-content: center; margin: 4px 0 10px; flex-wrap: wrap; }
+.adjust-btn {
+  border: 1px solid var(--line); background: var(--surface); color: var(--ink);
+  border-radius: 10px; padding: 7px 12px; font-family: inherit; font-size: 13px; cursor: pointer;
+}
+.timer-actions { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+.stepper { display: flex; align-items: center; gap: 14px; justify-content: center; margin: 10px 0; }
+.step-btn {
+  width: 46px; height: 46px; border-radius: 50%; border: none; background: var(--accent);
+  color: #fff; font-size: 22px; line-height: 1; cursor: pointer; padding: 0;
+}
+.step-val { min-width: 90px; text-align: center; font-size: 20px; font-weight: 700; color: var(--accent-ink); font-variant-numeric: tabular-nums; }
+.panel { border-top: 1px solid var(--line); padding-top: 10px; margin-top: 10px; }
+.panel-actions { display: flex; gap: 8px; justify-content: center; margin-top: 8px; }
+.pump-seg { margin: 4px auto 2px; }
+.day-nav { display: flex; align-items: center; justify-content: space-between; margin: 4px 0 12px; }
+.day-arrow {
+  width: 44px; height: 44px; border-radius: 12px; border: 1px solid var(--line);
+  background: var(--surface); color: var(--ink); font-size: 20px; cursor: pointer;
+}
+.day-arrow:disabled { opacity: 0.35; }
+.day-label { font-weight: 700; color: var(--ink); font-size: 15px; }
+.evt-row { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-top: 1px solid var(--line); }
+.evt-row:first-of-type { border-top: none; }
+.evt-dot { width: 10px; height: 10px; border-radius: 50%; flex: 0 0 auto; }
+.dot-nurse { background: #b5739d; }
+.dot-bottle { background: #7fa7d9; }
+.dot-pump { background: #9b8fd0; }
+.dot-sleep { background: #6d87b8; }
+.dot-diaper { background: #d9a066; }
+.evt-main { flex: 1 1 auto; min-width: 0; }
+.evt-time { display: block; font-size: 12px; color: var(--muted); }
+.evt-desc { display: block; font-size: 15px; color: var(--ink); font-weight: 600; }
+.evt-del {
+  flex: 0 0 auto; width: 32px; height: 32px; border: none; border-radius: 50%;
+  background: var(--accent-soft); color: var(--accent-ink); font-size: 19px; line-height: 1;
+  cursor: pointer; padding: 0; transition: background .12s, color .12s;
+}
+.evt-del:hover { background: var(--accent); color: #fff; }
+.armed { background: #c0555f !important; color: #fff !important; border-color: #c0555f !important; }
+.growth-pair { display: flex; gap: 10px; }
+.growth-pair input { flex: 1 1 0; }
+.backup-actions { display: flex; gap: 8px; flex-wrap: wrap; margin: 6px 0; }
+.backup-status { min-height: 16px; margin: 4px 0 0; }
+.stage-switch { margin-top: 8px; }

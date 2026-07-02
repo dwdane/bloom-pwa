@@ -5,7 +5,7 @@
 
 (() => {
   const root = document.getElementById('app');
-  const APP_VERSION = 'v28';
+  const APP_VERSION = 'v29';
 
   const state = {
     dating: { lmp: null, ultrasoundDueDate: null },
@@ -347,10 +347,8 @@
     else if (state.view === 'growth') renderBabyGrowth(content);
     else if (state.view === 'arrival') renderArrivalView(content);
 
-    if (state.view === 'week') {
-      maybeArrivalPrompt(content);
-      journeyBanner(content);
-    }
+    if (state.view === 'week') maybeArrivalPrompt(content);
+    if (['week', 'log', 'tools', 'lists', 'food'].includes(state.view)) journeyBanner(content);
 
     const toolsIcon = '<path d="M14.7 6.3a4 4 0 0 1-5.4 5.3L4 17v3h3l5.4-5.3a4 4 0 0 1 5.3-5.4l-2.6 2.6-2-2 2.6-2.6Z"/>';
     const listsIcon = '<line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><polyline points="3 6 4 7 6 5"/><polyline points="3 12 4 13 6 11"/><line x1="3" y1="18" x2="3.01" y2="18"/>';
@@ -360,9 +358,7 @@
         ? [
             navItem('home', 'Home', '<path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l8.8 8.8 8.8-8.8a5.5 5.5 0 0 0 0-7.8Z"/>'),
             navItem('day', 'Day', '<circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/>'),
-            navItem('tools', 'Tools', toolsIcon),
-            navItem('lists', 'Lists', listsIcon),
-            navItem('food', 'Food', foodIcon),
+            navItem('growth', 'Growth', '<polyline points="3 17 9 11 13 15 21 7"/><polyline points="14 7 21 7 21 14"/>'),
           ]
         : [
             navItem('week', 'Week', '<rect x="3" y="4" width="18" height="18" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="16" y1="2" x2="16" y2="6"/>'),
@@ -1873,6 +1869,18 @@
     return Math.floor(m / 60) + 'h ' + (m % 60) + 'm';
   }
 
+  // Live-timer display: m:ss under an hour, h:mm:ss beyond.
+  function fmtElapsed(ms) {
+    const s = Math.max(0, Math.floor(ms / 1000));
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const ss = String(s % 60).padStart(2, '0');
+    if (h > 0) return h + ':' + String(m).padStart(2, '0') + ':' + ss;
+    return m + ':' + ss;
+  }
+
+  const KIND_LABELS = { breastmilk: 'breast milk', formula: 'formula', mixed: 'mixed' };
+
   function clockStr(ts) {
     return new Date(ts).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
   }
@@ -1948,10 +1956,15 @@
 
   function eventDesc(e) {
     if (e.type === 'nurse') {
+      if (e.leftMs > 0 && e.rightMs > 0) {
+        return 'Nursed L ' + durShort(e.leftMs) + ' \u00b7 R ' + durShort(e.rightMs);
+      }
       const side = e.side === 'L' ? 'left' : 'right';
       return 'Nursed ' + side + (e.end ? ' \u00b7 ' + durShort(e.end - e.start) : '');
     }
-    if (e.type === 'bottle') return 'Bottle \u00b7 ' + fmtAmount(e.amountMl);
+    if (e.type === 'bottle') {
+      return 'Bottle \u00b7 ' + fmtAmount(e.amountMl) + (e.kind && KIND_LABELS[e.kind] ? ' \u00b7 ' + KIND_LABELS[e.kind] : '');
+    }
     if (e.type === 'pump') {
       const side = e.side === 'L' ? ' left' : e.side === 'R' ? ' right' : '';
       return 'Pumped' + side + ' \u00b7 ' + fmtAmount(e.amountMl);
@@ -2119,9 +2132,15 @@
       Store.getSetting('arrivalSeen'),
       Store.getSetting('lastBottleMl'),
       Store.getSetting('lastPumpMl'),
+      Store.getSetting('lastBottleKind'),
       Store.eventsInRange(now - 48 * HOUR_MS, now + 60000),
       Store.allMeasurements(),
-    ]).then(([activeNurse, activeSleep, arrivalSeen, lastBottleMl, lastPumpMl, recent, measurements]) => {
+    ]).then(([activeNurseRaw, activeSleep, arrivalSeen, lastBottleMl, lastPumpMl, lastBottleKind, recent, measurements]) => {
+      const activeNurse = activeNurseRaw
+        ? activeNurseRaw.sideStart != null
+          ? activeNurseRaw
+          : { side: activeNurseRaw.side, start: activeNurseRaw.start, sideStart: activeNurseRaw.start, leftMs: 0, rightMs: 0 }
+        : null;
       const todayIso = todayISO();
       const { start: dayStart, end: dayEnd } = dayBounds(todayIso);
       const todays = recent.filter((e) => e.start < dayEnd && (e.end || e.start) >= dayStart);
@@ -2162,12 +2181,12 @@
         }
         const feeds = recent
           .filter((e) => e.type === 'nurse' || e.type === 'bottle')
-          .sort((a, b) => (b.end || b.start) - (a.end || a.start));
+          .sort((a, b) => b.start - a.start);
         if (activeNurse) {
           feedLine.textContent = 'Nursing now \u00b7 ' + (activeNurse.side === 'L' ? 'left' : 'right');
         } else if (feeds.length) {
           const f = feeds[0];
-          feedLine.textContent = 'Last feed: ' + eventDesc(f) + ' \u00b7 ' + timeAgo(f.end || f.start);
+          feedLine.textContent = 'Last feed: ' + eventDesc(f) + ' \u00b7 started ' + timeAgo(f.start);
         } else {
           feedLine.textContent = 'No feeds logged yet';
         }
@@ -2196,31 +2215,49 @@
       function timerCard(kind, data) {
         const isNurse = kind === 'nurse';
         const box = el('div', { class: 'timer-card' });
-        const big = el('p', { class: 'timer-big', text: durShort(Date.now() - data.start) });
-        const sub = el('p', { class: 'timer-sub', text: 'Started ' + clockStr(data.start) });
-        box.appendChild(
-          el('p', { class: 'timer-title', text: isNurse ? 'Nursing \u2014 ' + (data.side === 'L' ? 'Left' : 'Right') : 'Sleeping' })
-        );
+        const title = el('p', { class: 'timer-title' });
+        const big = el('p', { class: 'timer-big' });
+        const sub = el('p', { class: 'timer-sub' });
+        box.appendChild(title);
         box.appendChild(big);
         box.appendChild(sub);
-        trackInterval(setInterval(() => {
-          big.textContent = durShort(Date.now() - data.start);
-        }, 1000));
+
+        const sideName = (s) => (s === 'L' ? 'Left' : 'Right');
+        function refresh() {
+          const t = Date.now();
+          big.textContent = fmtElapsed(t - data.start);
+          if (isNurse) {
+            title.textContent = 'Nursing \u2014 ' + sideName(data.side);
+            const doneL = (data.leftMs || 0) + (data.side === 'L' ? t - data.sideStart : 0);
+            const doneR = (data.rightMs || 0) + (data.side === 'R' ? t - data.sideStart : 0);
+            const bits = ['Started ' + clockStr(data.start)];
+            if (doneL > 0 && doneR > 0) bits.push('L ' + durShort(doneL) + ' \u00b7 R ' + durShort(doneR));
+            sub.textContent = bits.join(' \u00b7 ');
+          } else {
+            title.textContent = 'Sleeping';
+            sub.textContent = 'Started ' + clockStr(data.start);
+          }
+        }
+        refresh();
+        trackInterval(setInterval(refresh, 1000));
 
         const settingKey = isNurse ? 'activeNurse' : 'activeSleep';
-        async function shiftStart(mins) {
-          const next = Math.min(data.start + mins * 60000, Date.now() - 60000);
-          data.start = next;
-          await Store.setSetting(settingKey, data);
-          sub.textContent = 'Started ' + clockStr(data.start);
-          big.textContent = durShort(Date.now() - data.start);
+        const unswitched = !isNurse || ((data.leftMs || 0) === 0 && (data.rightMs || 0) === 0);
+        if (unswitched) {
+          const shiftStart = async (mins) => {
+            const next = Math.min(data.start + mins * 60000, Date.now() - 60000);
+            data.start = next;
+            if (isNurse) data.sideStart = next;
+            await Store.setSetting(settingKey, data);
+            refresh();
+          };
+          box.appendChild(
+            el('div', { class: 'adjust-row' }, [
+              el('button', { class: 'adjust-btn', text: 'Started 5m earlier', onClick: () => shiftStart(-5) }),
+              el('button', { class: 'adjust-btn', text: '5m later', onClick: () => shiftStart(5) }),
+            ])
+          );
         }
-        box.appendChild(
-          el('div', { class: 'adjust-row' }, [
-            el('button', { class: 'adjust-btn', text: 'Started 5m earlier', onClick: () => shiftStart(-5) }),
-            el('button', { class: 'adjust-btn', text: '5m later', onClick: () => shiftStart(5) }),
-          ])
-        );
 
         const actions = el('div', { class: 'timer-actions' });
         actions.appendChild(
@@ -2228,9 +2265,22 @@
             class: 'primary compact',
             text: isNurse ? 'Stop & save' : 'Awake \u2014 save',
             onClick: async () => {
-              const ev = isNurse
-                ? { type: 'nurse', side: data.side, start: data.start, end: Date.now() }
-                : { type: 'sleep', start: data.start, end: Date.now() };
+              const t = Date.now();
+              let ev;
+              if (isNurse) {
+                const leftMs = (data.leftMs || 0) + (data.side === 'L' ? t - data.sideStart : 0);
+                const rightMs = (data.rightMs || 0) + (data.side === 'R' ? t - data.sideStart : 0);
+                ev = {
+                  type: 'nurse',
+                  side: data.side,
+                  start: data.start,
+                  end: t,
+                  leftMs: leftMs > 0 ? leftMs : null,
+                  rightMs: rightMs > 0 ? rightMs : null,
+                };
+              } else {
+                ev = { type: 'sleep', start: data.start, end: t };
+              }
               await saveEvent(ev);
               await Store.setSetting(settingKey, null);
               toast(isNurse ? 'Feed saved' : 'Sleep saved');
@@ -2244,8 +2294,13 @@
               class: 'secondary compact',
               text: 'Switch side',
               onClick: async () => {
-                await saveEvent({ type: 'nurse', side: data.side, start: data.start, end: Date.now() });
-                await Store.setSetting('activeNurse', { side: data.side === 'L' ? 'R' : 'L', start: Date.now() });
+                const t = Date.now();
+                const next = { ...data };
+                if (data.side === 'L') next.leftMs = (data.leftMs || 0) + (t - data.sideStart);
+                else next.rightMs = (data.rightMs || 0) + (t - data.sideStart);
+                next.side = data.side === 'L' ? 'R' : 'L';
+                next.sideStart = t;
+                await Store.setSetting('activeNurse', next);
                 renderApp();
               },
             })
@@ -2272,7 +2327,8 @@
         const lastNurse = recent.filter((e) => e.type === 'nurse').sort((a, b) => b.start - a.start)[0];
         const suggest = lastNurse ? (lastNurse.side === 'L' ? 'R' : 'L') : null;
         const startNurse = (side) => async () => {
-          await Store.setSetting('activeNurse', { side, start: Date.now() });
+          const now = Date.now();
+          await Store.setSetting('activeNurse', { side, start: now, sideStart: now, leftMs: 0, rightMs: 0 });
           renderApp();
         };
         const grid = el('div', { class: 'baby-grid' }, [
@@ -2324,6 +2380,23 @@
           ])
         );
         let side = 'both';
+        let kind = opts.initialKind || null;
+        if (opts.kinds) {
+          const kseg = el('div', { class: 'segmented pump-seg' });
+          for (const [key, label] of opts.kinds) {
+            const b = el('button', {
+              class: 'seg-btn' + (key === kind ? ' active' : ''),
+              text: label,
+              onClick: () => {
+                kind = key;
+                [...kseg.children].forEach((c) => c.classList.toggle('active', c.dataset.k === key));
+              },
+            });
+            b.dataset.k = key;
+            kseg.appendChild(b);
+          }
+          panel.appendChild(kseg);
+        }
         if (opts.sides) {
           const seg = el('div', { class: 'segmented pump-seg' });
           for (const [key, label] of [['L', 'Left'], ['R', 'Right'], ['both', 'Both']]) {
@@ -2346,7 +2419,7 @@
               class: 'primary compact',
               text: 'Save',
               onClick: async () => {
-                await opts.save(Math.round(ml), side);
+                await opts.save(Math.round(ml), side, kind);
                 toast(opts.savedText);
                 renderApp();
               },
@@ -2365,10 +2438,13 @@
 
       const bottlePanel = amountPanel({
         initialMl: lastBottleMl || 90,
+        initialKind: lastBottleKind || 'breastmilk',
+        kinds: [['breastmilk', 'Breast milk'], ['formula', 'Formula'], ['mixed', 'Mixed']],
         savedText: 'Bottle saved',
-        save: async (ml) => {
-          await saveEvent({ type: 'bottle', start: Date.now(), end: null, amountMl: ml });
+        save: async (ml, _side, kind) => {
+          await saveEvent({ type: 'bottle', start: Date.now(), end: null, amountMl: ml, kind: kind || null });
           await Store.setSetting('lastBottleMl', ml);
+          if (kind) await Store.setSetting('lastBottleKind', kind);
         },
       });
       const pumpPanel = amountPanel({
@@ -2523,7 +2599,181 @@
       }
       body.appendChild(totals);
 
-      const list = el('div', { class: 'card' }, [el('h3', { class: 'card-title', text: 'Timeline' })]);
+      const editorHost = el('div', {});
+      body.appendChild(editorHost);
+
+      function timeValue(ts) {
+        const dt = new Date(ts);
+        const p = (n) => String(n).padStart(2, '0');
+        return p(dt.getHours()) + ':' + p(dt.getMinutes());
+      }
+
+      function openEditor(ev) {
+        editorHost.innerHTML = '';
+        let type = ev ? ev.type : 'nurse';
+        const card = el('div', { class: 'card' }, [
+          el('h3', { class: 'card-title', text: ev ? 'Edit entry' : 'Add entry' }),
+        ]);
+        editorHost.appendChild(card);
+
+        const typeSeg = el('div', { class: 'segmented type-seg' });
+        for (const [key, label] of [['nurse', 'Nurse'], ['bottle', 'Bottle'], ['pump', 'Pump'], ['sleep', 'Sleep'], ['diaper', 'Diaper']]) {
+          const b = el('button', {
+            class: 'seg-btn' + (key === type ? ' active' : ''),
+            text: label,
+            onClick: () => {
+              if (ev) return;
+              type = key;
+              [...typeSeg.children].forEach((c) => c.classList.toggle('active', c.dataset.t === key));
+              buildFields();
+            },
+          });
+          b.dataset.t = key;
+          if (ev && key !== type) b.disabled = true;
+          typeSeg.appendChild(b);
+        }
+        card.appendChild(typeSeg);
+
+        const fields = el('div', {});
+        card.appendChild(fields);
+        const error = el('p', { class: 'error' });
+
+        const timeInput = el('input', { type: 'time', value: timeValue(ev ? ev.start : Date.now()) });
+        const durInput = el('input', { type: 'number', inputmode: 'numeric', min: '1', step: '1' });
+        const amtInput = el('input', { type: 'number', inputmode: 'decimal', min: '0', step: state.imperial ? '0.5' : '10' });
+        let side = ev && ev.side ? ev.side : null;
+        let dkind = ev && ev.type === 'diaper' && ev.kind ? ev.kind : 'wet';
+        let bkind = ev && ev.type === 'bottle' && ev.kind ? ev.kind : 'breastmilk';
+
+        function segRow(label, pairs, getVal, setVal) {
+          const box = el('div', {});
+          box.appendChild(el('label', { class: 'field-label', text: label }));
+          const seg = el('div', { class: 'segmented' });
+          for (const [key, lab] of pairs) {
+            const b = el('button', {
+              class: 'seg-btn' + (getVal() === key ? ' active' : ''),
+              text: lab,
+              onClick: () => {
+                setVal(key);
+                [...seg.children].forEach((c) => c.classList.toggle('active', c.dataset.k === key));
+              },
+            });
+            b.dataset.k = key;
+            seg.appendChild(b);
+          }
+          box.appendChild(seg);
+          return box;
+        }
+
+        function buildFields() {
+          fields.innerHTML = '';
+          fields.appendChild(el('label', { class: 'field-label', text: 'Time' }));
+          fields.appendChild(timeInput);
+          if (type === 'nurse' || type === 'sleep') {
+            if (!durInput.value) {
+              durInput.value = ev && ev.end
+                ? String(Math.max(1, Math.round((ev.end - ev.start) / 60000)))
+                : type === 'nurse' ? '15' : '60';
+            }
+            fields.appendChild(el('label', { class: 'field-label', text: 'Duration (minutes)' }));
+            fields.appendChild(durInput);
+          }
+          if (type === 'nurse') {
+            if (side !== 'L' && side !== 'R') side = 'L';
+            fields.appendChild(segRow('Finished on', [['L', 'Left'], ['R', 'Right']], () => side, (v) => { side = v; }));
+          }
+          if (type === 'bottle' || type === 'pump') {
+            if (!amtInput.value && ev && ev.amountMl != null) {
+              amtInput.value = state.imperial ? (ev.amountMl / ML_PER_OZ).toFixed(1) : String(Math.round(ev.amountMl));
+            }
+            fields.appendChild(el('label', { class: 'field-label', text: state.imperial ? 'Amount (oz)' : 'Amount (ml)' }));
+            fields.appendChild(amtInput);
+          }
+          if (type === 'bottle') {
+            fields.appendChild(segRow('Milk', [['breastmilk', 'Breast milk'], ['formula', 'Formula'], ['mixed', 'Mixed']], () => bkind, (v) => { bkind = v; }));
+          }
+          if (type === 'pump') {
+            if (side !== 'L' && side !== 'R' && side !== 'both') side = 'both';
+            fields.appendChild(segRow('Side', [['L', 'Left'], ['R', 'Right'], ['both', 'Both']], () => side, (v) => { side = v; }));
+          }
+          if (type === 'diaper') {
+            fields.appendChild(segRow('Diaper', [['wet', 'Wet'], ['dirty', 'Dirty'], ['both', 'Both']], () => dkind, (v) => { dkind = v; }));
+          }
+          fields.appendChild(error);
+        }
+        buildFields();
+
+        card.appendChild(
+          el('div', { class: 'panel-actions' }, [
+            el('button', {
+              class: 'primary compact',
+              text: 'Save',
+              onClick: async () => {
+                error.textContent = '';
+                if (!timeInput.value) {
+                  error.textContent = 'Enter a time.';
+                  return;
+                }
+                const start = new Date(dayIso + 'T' + timeInput.value + ':00').getTime();
+                let end = null;
+                let amountMl = null;
+                let evSide = null;
+                let evKind = null;
+                if (type === 'nurse' || type === 'sleep') {
+                  const mins = parseInt(durInput.value, 10);
+                  if (!mins || mins < 1) {
+                    error.textContent = 'Enter a duration.';
+                    return;
+                  }
+                  end = start + mins * 60000;
+                }
+                if (type === 'nurse') evSide = side;
+                if (type === 'bottle' || type === 'pump') {
+                  const v = parseFloat(amtInput.value);
+                  if (isNaN(v) || v <= 0) {
+                    error.textContent = 'Enter an amount.';
+                    return;
+                  }
+                  amountMl = Math.round(state.imperial ? v * ML_PER_OZ : v);
+                  if (type === 'bottle') evKind = bkind;
+                  else evSide = side;
+                }
+                if (type === 'diaper') evKind = dkind;
+                await Store.putEvent({
+                  id: ev ? ev.id : uid(),
+                  childId: CHILD_ID,
+                  type,
+                  start,
+                  end,
+                  side: evSide,
+                  amountMl,
+                  kind: evKind,
+                  leftMs: null,
+                  rightMs: null,
+                  notes: ev ? ev.notes || null : null,
+                });
+                toast(ev ? 'Entry updated' : 'Entry added');
+                renderApp();
+              },
+            }),
+            el('button', {
+              class: 'ghost-btn compact',
+              text: 'Cancel',
+              onClick: () => {
+                editorHost.innerHTML = '';
+              },
+            }),
+          ])
+        );
+        card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+
+      const list = el('div', { class: 'card' }, [
+        el('div', { class: 'card-head' }, [
+          el('h3', { class: 'card-title', text: 'Timeline' }),
+          el('button', { class: 'secondary compact', text: '+ Add', onClick: () => openEditor(null) }),
+        ]),
+      ]);
       body.appendChild(list);
 
       const rows = [];
@@ -2542,6 +2792,10 @@
           el('span', { class: 'evt-time', text: eventTimeLabel(e) + (e.live ? ' \u00b7 in progress' : '') }),
           el('span', { class: 'evt-desc', text: eventDesc(e) }),
         ]);
+        if (!e.live) {
+          main.classList.add('evt-edit');
+          main.addEventListener('click', () => openEditor(e));
+        }
         const row = el('div', { class: 'evt-row' }, [el('span', { class: 'evt-dot dot-' + e.type }), main]);
         if (!e.live) {
           row.appendChild(
@@ -2589,18 +2843,7 @@
   }
 
   function renderBabyGrowth(container) {
-    const backHeader = el('header', { class: 'app-header tool-header' }, [
-      el('button', {
-        class: 'back-btn',
-        text: '\u2039 Back',
-        onClick: () => {
-          state.view = 'home';
-          renderApp();
-        },
-      }),
-      el('h1', { class: 'app-title', text: 'Growth' }),
-    ]);
-    const wrap = el('div', { class: 'wrap' }, [backHeader]);
+    const wrap = el('div', { class: 'wrap' }, [viewHeader('Growth')]);
     container.appendChild(wrap);
 
     const dateInput = el('input', { type: 'date', value: todayISO(), max: todayISO() });
@@ -2733,16 +2976,25 @@
         born += ' \u00b7 ' + Math.floor(state.child.gaDays / 7) + 'w ' + (state.child.gaDays % 7) + 'd at birth';
       }
       card.appendChild(el('p', { class: 'muted small', text: born }));
-      card.appendChild(
+      const jump = (view, label) =>
         el('button', {
           class: 'secondary compact',
-          text: 'Pregnancy journey',
+          text: label,
           onClick: () => {
             state.viewWeek = null;
-            state.view = 'week';
+            state.view = view;
             renderApp();
           },
-        })
+        });
+      card.appendChild(el('p', { class: 'muted small', text: 'Pregnancy features live on here:' }));
+      card.appendChild(
+        el('div', { class: 'preg-links' }, [
+          jump('week', 'Journey'),
+          jump('log', 'Daily log'),
+          jump('tools', 'Tools'),
+          jump('lists', 'Lists'),
+          jump('food', 'Food guide'),
+        ])
       );
       card.appendChild(
         twoTap(

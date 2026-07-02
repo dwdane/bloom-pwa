@@ -1235,3 +1235,10 @@ button { font-family: inherit; }
 .backup-actions { display: flex; gap: 8px; flex-wrap: wrap; margin: 6px 0; }
 .backup-status { min-height: 16px; margin: 4px 0 0; }
 .stage-switch { margin-top: 8px; }
+
+/* --- Baby mode: day editor & settings links --- */
+.card-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.card-head .card-title { margin: 0; }
+.type-seg { margin: 4px 0 10px; }
+.evt-edit { cursor: pointer; }
+.preg-links { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 8px; }

@@ -169,3 +169,13 @@ qualified lawyer for your jurisdiction. Areas that commonly need attention:
 
 Per-week notes, on-device encryption of stored data (Web Crypto), and an optional
 PIN lock. Photos are intentionally out of the web version.
+
+## Baby mode
+
+When the baby arrives, Bloom switches from pregnancy tracking to a private baby
+tracker: nursing sessions with per-side timers, bottles (with milk type),
+pumping, sleep, diapers, activities, and first foods. A Day timeline supports
+adding and editing past entries, Trends shows a color-coded week calendar plus
+7/30-day summaries, and Growth records weight, length, and head circumference.
+Pregnancy features remain available from Settings, and everything continues to
+live only on the device.

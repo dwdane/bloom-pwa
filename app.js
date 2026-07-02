@@ -5,7 +5,7 @@
 
 (() => {
   const root = document.getElementById('app');
-  const APP_VERSION = 'v29';
+  const APP_VERSION = 'v30';
 
   const state = {
     dating: { lmp: null, ultrasoundDueDate: null },
@@ -22,6 +22,10 @@
     lifeStage: 'pregnancy', // 'pregnancy' | 'baby'
     child: null, // { birthDate, birthTime, gaDays } once baby arrives
     babyDay: null, // selected day (ISO) for the baby Day view
+    dayEditor: false, // open the day-view entry editor on next render
+    trendsView: 'week', // 'week' | 'summary'
+    trendsAnchor: null, // last day (ISO) of the trends week window
+    trendsRange: 7, // summary window in days
   };
 
   // Whether the browser granted persistent storage (null until known).
@@ -346,6 +350,8 @@
     else if (state.view === 'day') renderBabyDay(content);
     else if (state.view === 'growth') renderBabyGrowth(content);
     else if (state.view === 'arrival') renderArrivalView(content);
+    else if (state.view === 'trends') renderBabyTrends(content);
+    else if (state.view === 'foods') renderBabyFoods(content);
 
     if (state.view === 'week') maybeArrivalPrompt(content);
     if (['week', 'log', 'tools', 'lists', 'food'].includes(state.view)) journeyBanner(content);
@@ -358,6 +364,7 @@
         ? [
             navItem('home', 'Home', '<path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l8.8 8.8 8.8-8.8a5.5 5.5 0 0 0 0-7.8Z"/>'),
             navItem('day', 'Day', '<circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/>'),
+            navItem('trends', 'Trends', '<line x1="6" y1="20" x2="6" y2="14"/><line x1="12" y1="20" x2="12" y2="8"/><line x1="18" y1="20" x2="18" y2="4"/>'),
             navItem('growth', 'Growth', '<polyline points="3 17 9 11 13 15 21 7"/><polyline points="14 7 21 7 21 14"/>'),
           ]
         : [
@@ -1880,6 +1887,23 @@
   }
 
   const KIND_LABELS = { breastmilk: 'breast milk', formula: 'formula', mixed: 'mixed' };
+  const EVENT_COLORS = {
+    nurse: '#b5739d',
+    bottle: '#7fa7d9',
+    pump: '#9b8fd0',
+    sleep: '#6d87b8',
+    diaper: '#d9a066',
+    activity: '#6fae85',
+    solid: '#c9a24f',
+  };
+  const ACTIVITY_LABELS = {
+    tummy: 'Tummy time',
+    bath: 'Bath',
+    story: 'Story time',
+    screen: 'Screen time',
+    outdoors: 'Outdoors',
+    play: 'Playtime',
+  };
 
   function clockStr(ts) {
     return new Date(ts).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
@@ -1956,12 +1980,19 @@
 
   function eventDesc(e) {
     if (e.type === 'nurse') {
-      if (e.leftMs > 0 && e.rightMs > 0) {
-        return 'Nursed L ' + durShort(e.leftMs) + ' \u00b7 R ' + durShort(e.rightMs);
-      }
+      const l = e.leftMs || 0;
+      const r = e.rightMs || 0;
+      if (l > 0 && r > 0) return 'Nursed L ' + durShort(l) + ' \u00b7 R ' + durShort(r);
+      if (l > 0) return 'Nursed left \u00b7 ' + durShort(l);
+      if (r > 0) return 'Nursed right \u00b7 ' + durShort(r);
       const side = e.side === 'L' ? 'left' : 'right';
       return 'Nursed ' + side + (e.end ? ' \u00b7 ' + durShort(e.end - e.start) : '');
     }
+    if (e.type === 'activity') {
+      const label = ACTIVITY_LABELS[e.kind] || 'Activity';
+      return label + (e.end ? ' \u00b7 ' + durShort(e.end - e.start) : '');
+    }
+    if (e.type === 'solid') return 'First taste \u00b7 ' + (e.kind || 'food');
     if (e.type === 'bottle') {
       return 'Bottle \u00b7 ' + fmtAmount(e.amountMl) + (e.kind && KIND_LABELS[e.kind] ? ' \u00b7 ' + KIND_LABELS[e.kind] : '');
     }
@@ -1975,7 +2006,7 @@
   }
 
   function eventTimeLabel(e) {
-    if (e.type === 'sleep' || e.type === 'nurse') {
+    if (e.type === 'sleep' || e.type === 'nurse' || e.type === 'activity') {
       return clockStr(e.start) + '\u2013' + (e.end ? clockStr(e.end) : 'now');
     }
     return clockStr(e.start);
@@ -2137,9 +2168,14 @@
       Store.allMeasurements(),
     ]).then(([activeNurseRaw, activeSleep, arrivalSeen, lastBottleMl, lastPumpMl, lastBottleKind, recent, measurements]) => {
       const activeNurse = activeNurseRaw
-        ? activeNurseRaw.sideStart != null
-          ? activeNurseRaw
-          : { side: activeNurseRaw.side, start: activeNurseRaw.start, sideStart: activeNurseRaw.start, leftMs: 0, rightMs: 0 }
+        ? {
+            start: activeNurseRaw.start,
+            side: activeNurseRaw.side || null,
+            sideStart: activeNurseRaw.sideStart != null ? activeNurseRaw.sideStart : activeNurseRaw.start,
+            leftMs: activeNurseRaw.leftMs || 0,
+            rightMs: activeNurseRaw.rightMs || 0,
+            lastSide: activeNurseRaw.lastSide || activeNurseRaw.side || null,
+          }
         : null;
       const todayIso = todayISO();
       const { start: dayStart, end: dayEnd } = dayBounds(todayIso);
@@ -2212,140 +2248,65 @@
       const logCard = el('div', { class: 'card' }, [el('h3', { class: 'card-title', text: 'Log' })]);
       body.appendChild(logCard);
 
-      function timerCard(kind, data) {
-        const isNurse = kind === 'nurse';
+      function sleepCard(data) {
         const box = el('div', { class: 'timer-card' });
-        const title = el('p', { class: 'timer-title' });
         const big = el('p', { class: 'timer-big' });
         const sub = el('p', { class: 'timer-sub' });
-        box.appendChild(title);
+        box.appendChild(el('p', { class: 'timer-title', text: 'Sleeping' }));
         box.appendChild(big);
         box.appendChild(sub);
 
-        const sideName = (s) => (s === 'L' ? 'Left' : 'Right');
         function refresh() {
-          const t = Date.now();
-          big.textContent = fmtElapsed(t - data.start);
-          if (isNurse) {
-            title.textContent = 'Nursing \u2014 ' + sideName(data.side);
-            const doneL = (data.leftMs || 0) + (data.side === 'L' ? t - data.sideStart : 0);
-            const doneR = (data.rightMs || 0) + (data.side === 'R' ? t - data.sideStart : 0);
-            const bits = ['Started ' + clockStr(data.start)];
-            if (doneL > 0 && doneR > 0) bits.push('L ' + durShort(doneL) + ' \u00b7 R ' + durShort(doneR));
-            sub.textContent = bits.join(' \u00b7 ');
-          } else {
-            title.textContent = 'Sleeping';
-            sub.textContent = 'Started ' + clockStr(data.start);
-          }
+          big.textContent = fmtElapsed(Date.now() - data.start);
+          sub.textContent = 'Started ' + clockStr(data.start);
         }
         refresh();
         trackInterval(setInterval(refresh, 1000));
 
-        const settingKey = isNurse ? 'activeNurse' : 'activeSleep';
-        const unswitched = !isNurse || ((data.leftMs || 0) === 0 && (data.rightMs || 0) === 0);
-        if (unswitched) {
-          const shiftStart = async (mins) => {
-            const next = Math.min(data.start + mins * 60000, Date.now() - 60000);
-            data.start = next;
-            if (isNurse) data.sideStart = next;
-            await Store.setSetting(settingKey, data);
-            refresh();
-          };
-          box.appendChild(
-            el('div', { class: 'adjust-row' }, [
-              el('button', { class: 'adjust-btn', text: 'Started 5m earlier', onClick: () => shiftStart(-5) }),
-              el('button', { class: 'adjust-btn', text: '5m later', onClick: () => shiftStart(5) }),
-            ])
-          );
-        }
-
-        const actions = el('div', { class: 'timer-actions' });
-        actions.appendChild(
-          el('button', {
-            class: 'primary compact',
-            text: isNurse ? 'Stop & save' : 'Awake \u2014 save',
-            onClick: async () => {
-              const t = Date.now();
-              let ev;
-              if (isNurse) {
-                const leftMs = (data.leftMs || 0) + (data.side === 'L' ? t - data.sideStart : 0);
-                const rightMs = (data.rightMs || 0) + (data.side === 'R' ? t - data.sideStart : 0);
-                ev = {
-                  type: 'nurse',
-                  side: data.side,
-                  start: data.start,
-                  end: t,
-                  leftMs: leftMs > 0 ? leftMs : null,
-                  rightMs: rightMs > 0 ? rightMs : null,
-                };
-              } else {
-                ev = { type: 'sleep', start: data.start, end: t };
-              }
-              await saveEvent(ev);
-              await Store.setSetting(settingKey, null);
-              toast(isNurse ? 'Feed saved' : 'Sleep saved');
-              renderApp();
-            },
-          })
+        const shiftStart = async (mins) => {
+          data.start = Math.min(data.start - mins * 60000, Date.now() - 1000);
+          await Store.setSetting('activeSleep', data);
+          refresh();
+        };
+        box.appendChild(
+          el('div', { class: 'adjust-row' }, [
+            el('button', { class: 'adjust-btn', text: '\u22125 min', onClick: () => shiftStart(-5) }),
+            el('button', { class: 'adjust-btn', text: '+5 min', onClick: () => shiftStart(5) }),
+          ])
         );
-        if (isNurse) {
-          actions.appendChild(
+        box.appendChild(el('p', { class: 'baby-caption', text: '+5 adds time if sleep began before the timer' }));
+
+        box.appendChild(
+          el('div', { class: 'timer-actions' }, [
             el('button', {
-              class: 'secondary compact',
-              text: 'Switch side',
+              class: 'primary compact',
+              text: 'Awake \u2014 save',
               onClick: async () => {
-                const t = Date.now();
-                const next = { ...data };
-                if (data.side === 'L') next.leftMs = (data.leftMs || 0) + (t - data.sideStart);
-                else next.rightMs = (data.rightMs || 0) + (t - data.sideStart);
-                next.side = data.side === 'L' ? 'R' : 'L';
-                next.sideStart = t;
-                await Store.setSetting('activeNurse', next);
+                await saveEvent({ type: 'sleep', start: data.start, end: Date.now() });
+                await Store.setSetting('activeSleep', null);
+                toast('Sleep saved');
                 renderApp();
               },
-            })
-          );
-        }
-        actions.appendChild(
-          twoTap(
-            el('button', { class: 'ghost-btn compact', text: 'Discard' }),
-            'Discard?',
-            async () => {
-              await Store.setSetting(settingKey, null);
-              renderApp();
-            }
-          )
+            }),
+            twoTap(
+              el('button', { class: 'ghost-btn compact', text: 'Discard' }),
+              'Discard?',
+              async () => {
+                await Store.setSetting('activeSleep', null);
+                renderApp();
+              }
+            ),
+          ])
         );
-        box.appendChild(actions);
         return box;
       }
 
       // Nursing
-      if (activeNurse) {
-        logCard.appendChild(timerCard('nurse', activeNurse));
-      } else {
-        const lastNurse = recent.filter((e) => e.type === 'nurse').sort((a, b) => b.start - a.start)[0];
-        const suggest = lastNurse ? (lastNurse.side === 'L' ? 'R' : 'L') : null;
-        const startNurse = (side) => async () => {
-          const now = Date.now();
-          await Store.setSetting('activeNurse', { side, start: now, sideStart: now, leftMs: 0, rightMs: 0 });
-          renderApp();
-        };
-        const grid = el('div', { class: 'baby-grid' }, [
-          el('button', { class: 'baby-btn' + (suggest === 'L' ? ' suggest' : ''), text: 'Nurse \u00b7 Left', onClick: startNurse('L') }),
-          el('button', { class: 'baby-btn' + (suggest === 'R' ? ' suggest' : ''), text: 'Nurse \u00b7 Right', onClick: startNurse('R') }),
-        ]);
-        logCard.appendChild(grid);
-        if (lastNurse) {
-          logCard.appendChild(
-            el('p', { class: 'baby-caption', text: 'Last side: ' + (lastNurse.side === 'L' ? 'left' : 'right') + ' \u00b7 ' + timeAgo(lastNurse.end || lastNurse.start) })
-          );
-        }
-      }
+      logCard.appendChild(nurseCard(activeNurse, recent));
 
       // Sleep
       if (activeSleep) {
-        logCard.appendChild(timerCard('sleep', activeSleep));
+        logCard.appendChild(sleepCard(activeSleep));
       } else {
         logCard.appendChild(
           el('div', { class: 'baby-grid' }, [
@@ -2465,6 +2426,7 @@
             onClick: () => {
               bottlePanel.style.display = bottlePanel.style.display === 'none' ? '' : 'none';
               pumpPanel.style.display = 'none';
+              activityPanel.style.display = 'none';
             },
           }),
           el('button', {
@@ -2473,6 +2435,7 @@
             onClick: () => {
               pumpPanel.style.display = pumpPanel.style.display === 'none' ? '' : 'none';
               bottlePanel.style.display = 'none';
+              activityPanel.style.display = 'none';
             },
           }),
         ])
@@ -2495,6 +2458,86 @@
       logCard.appendChild(
         el('div', { class: 'diaper-row' }, [diaperBtn('wet', 'Wet'), diaperBtn('dirty', 'Dirty'), diaperBtn('both', 'Both')])
       );
+
+      const activityPanel = (() => {
+        const panel = el('div', { class: 'panel' });
+        panel.style.display = 'none';
+        let kind = 'tummy';
+        const kseg = el('div', { class: 'segmented pump-seg' });
+        for (const [key, label] of Object.entries(ACTIVITY_LABELS)) {
+          const b = el('button', {
+            class: 'seg-btn' + (key === kind ? ' active' : ''),
+            text: label,
+            onClick: () => {
+              kind = key;
+              [...kseg.children].forEach((c) => c.classList.toggle('active', c.dataset.k === key));
+            },
+          });
+          b.dataset.k = key;
+          kseg.appendChild(b);
+        }
+        let mins = 5;
+        const val = el('span', { class: 'step-val', text: '5 min' });
+        const bump = (dir) => () => {
+          mins = Math.max(1, mins + dir);
+          val.textContent = mins + ' min';
+        };
+        panel.appendChild(kseg);
+        panel.appendChild(
+          el('div', { class: 'stepper' }, [
+            el('button', { class: 'step-btn', text: '\u2212', onClick: bump(-1) }),
+            val,
+            el('button', { class: 'step-btn', text: '+', onClick: bump(1) }),
+          ])
+        );
+        panel.appendChild(
+          el('div', { class: 'panel-actions' }, [
+            el('button', {
+              class: 'primary compact',
+              text: 'Save',
+              onClick: async () => {
+                const end = Date.now();
+                await saveEvent({ type: 'activity', kind, start: end - mins * 60000, end });
+                toast((ACTIVITY_LABELS[kind] || 'Activity') + ' saved');
+                renderApp();
+              },
+            }),
+            el('button', {
+              class: 'ghost-btn compact',
+              text: 'Close',
+              onClick: () => {
+                panel.style.display = 'none';
+              },
+            }),
+          ])
+        );
+        return panel;
+      })();
+
+      logCard.appendChild(
+        el('div', { class: 'baby-grid' }, [
+          el('button', {
+            class: 'baby-btn',
+            text: 'Activity',
+            onClick: () => {
+              activityPanel.style.display = activityPanel.style.display === 'none' ? '' : 'none';
+              bottlePanel.style.display = 'none';
+              pumpPanel.style.display = 'none';
+            },
+          }),
+          el('button', {
+            class: 'baby-btn',
+            text: 'Add entry \u2026',
+            onClick: () => {
+              state.babyDay = todayISO();
+              state.dayEditor = true;
+              state.view = 'day';
+              renderApp();
+            },
+          }),
+        ])
+      );
+      logCard.appendChild(activityPanel);
 
       // --- Today totals ---
       const sum = daySummary(todays, todayIso, activeSleep);
@@ -2539,6 +2582,21 @@
             text: lastM ? 'Add / view' : 'Add first measurement',
             onClick: () => {
               state.view = 'growth';
+              renderApp();
+            },
+          }),
+        ])
+      );
+
+      body.appendChild(
+        el('div', { class: 'card' }, [
+          el('h3', { class: 'card-title', text: 'Foods' }),
+          el('p', { class: 'muted small', text: 'A running list of first tastes \u2014 from purees to finger foods.' }),
+          el('button', {
+            class: 'secondary compact',
+            text: 'Foods tried',
+            onClick: () => {
+              state.view = 'foods';
               renderApp();
             },
           }),
@@ -2617,7 +2675,7 @@
         editorHost.appendChild(card);
 
         const typeSeg = el('div', { class: 'segmented type-seg' });
-        for (const [key, label] of [['nurse', 'Nurse'], ['bottle', 'Bottle'], ['pump', 'Pump'], ['sleep', 'Sleep'], ['diaper', 'Diaper']]) {
+        for (const [key, label] of [['nurse', 'Nurse'], ['bottle', 'Bottle'], ['pump', 'Pump'], ['sleep', 'Sleep'], ['diaper', 'Diaper'], ['activity', 'Activity']]) {
           const b = el('button', {
             class: 'seg-btn' + (key === type ? ' active' : ''),
             text: label,
@@ -2640,10 +2698,13 @@
 
         const timeInput = el('input', { type: 'time', value: timeValue(ev ? ev.start : Date.now()) });
         const durInput = el('input', { type: 'number', inputmode: 'numeric', min: '1', step: '1' });
+        const durLInput = el('input', { type: 'number', inputmode: 'numeric', min: '0', step: '1', placeholder: '0' });
+        const durRInput = el('input', { type: 'number', inputmode: 'numeric', min: '0', step: '1', placeholder: '0' });
         const amtInput = el('input', { type: 'number', inputmode: 'decimal', min: '0', step: state.imperial ? '0.5' : '10' });
         let side = ev && ev.side ? ev.side : null;
         let dkind = ev && ev.type === 'diaper' && ev.kind ? ev.kind : 'wet';
         let bkind = ev && ev.type === 'bottle' && ev.kind ? ev.kind : 'breastmilk';
+        let akind = ev && ev.type === 'activity' && ev.kind ? ev.kind : 'tummy';
 
         function segRow(label, pairs, getVal, setVal) {
           const box = el('div', {});
@@ -2669,16 +2730,31 @@
           fields.innerHTML = '';
           fields.appendChild(el('label', { class: 'field-label', text: 'Time' }));
           fields.appendChild(timeInput);
-          if (type === 'nurse' || type === 'sleep') {
+          if (type === 'sleep' || type === 'activity') {
             if (!durInput.value) {
               durInput.value = ev && ev.end
                 ? String(Math.max(1, Math.round((ev.end - ev.start) / 60000)))
-                : type === 'nurse' ? '15' : '60';
+                : type === 'sleep' ? '60' : '10';
             }
             fields.appendChild(el('label', { class: 'field-label', text: 'Duration (minutes)' }));
             fields.appendChild(durInput);
           }
+          if (type === 'activity') {
+            if (!ACTIVITY_LABELS[akind]) akind = 'tummy';
+            fields.appendChild(segRow('Activity', Object.entries(ACTIVITY_LABELS), () => akind, (v) => { akind = v; }));
+          }
           if (type === 'nurse') {
+            if (!durLInput.value && !durRInput.value) {
+              const l = ev && ev.leftMs ? Math.round(ev.leftMs / 60000) : ev && ev.end && ev.side === 'L' ? Math.round((ev.end - ev.start) / 60000) : 0;
+              const r = ev && ev.rightMs ? Math.round(ev.rightMs / 60000) : ev && ev.end && ev.side === 'R' ? Math.round((ev.end - ev.start) / 60000) : 0;
+              if (l) durLInput.value = String(l);
+              if (r) durRInput.value = String(r);
+              if (!l && !r) durLInput.value = '15';
+            }
+            fields.appendChild(el('label', { class: 'field-label', text: 'Left (minutes)' }));
+            fields.appendChild(durLInput);
+            fields.appendChild(el('label', { class: 'field-label', text: 'Right (minutes)' }));
+            fields.appendChild(durRInput);
             if (side !== 'L' && side !== 'R') side = 'L';
             fields.appendChild(segRow('Finished on', [['L', 'Left'], ['R', 'Right']], () => side, (v) => { side = v; }));
           }
@@ -2719,7 +2795,9 @@
                 let amountMl = null;
                 let evSide = null;
                 let evKind = null;
-                if (type === 'nurse' || type === 'sleep') {
+                let leftMs = null;
+                let rightMs = null;
+                if (type === 'sleep' || type === 'activity') {
                   const mins = parseInt(durInput.value, 10);
                   if (!mins || mins < 1) {
                     error.textContent = 'Enter a duration.';
@@ -2727,7 +2805,19 @@
                   }
                   end = start + mins * 60000;
                 }
-                if (type === 'nurse') evSide = side;
+                if (type === 'nurse') {
+                  const l = parseInt(durLInput.value, 10) || 0;
+                  const r = parseInt(durRInput.value, 10) || 0;
+                  if (l + r < 1) {
+                    error.textContent = 'Enter minutes for at least one side.';
+                    return;
+                  }
+                  end = start + (l + r) * 60000;
+                  leftMs = l > 0 ? l * 60000 : null;
+                  rightMs = r > 0 ? r * 60000 : null;
+                  evSide = side;
+                }
+                if (type === 'activity') evKind = akind;
                 if (type === 'bottle' || type === 'pump') {
                   const v = parseFloat(amtInput.value);
                   if (isNaN(v) || v <= 0) {
@@ -2748,8 +2838,8 @@
                   side: evSide,
                   amountMl,
                   kind: evKind,
-                  leftMs: null,
-                  rightMs: null,
+                  leftMs,
+                  rightMs,
                   notes: ev ? ev.notes || null : null,
                 });
                 toast(ev ? 'Entry updated' : 'Entry added');
@@ -2775,6 +2865,11 @@
         ]),
       ]);
       body.appendChild(list);
+
+      if (state.dayEditor) {
+        state.dayEditor = false;
+        openEditor(null);
+      }
 
       const rows = [];
       if (isToday && activeNurse) rows.push({ live: true, type: 'nurse', side: activeNurse.side, start: activeNurse.start, end: null });
@@ -2956,6 +3051,505 @@
               'Delete?',
               async () => {
                 await Store.deleteMeasurement(m.id);
+                renderApp();
+              }
+            ),
+          ])
+        );
+      }
+    });
+  }
+
+  // --- nursing sessions ---
+  // One feed spans both sides. Session shape while running:
+  // { start, side: 'L'|'R'|null (paused), sideStart, leftMs, rightMs, lastSide }
+
+  function nurseSideMs(s, sideKey, now) {
+    const base = sideKey === 'L' ? s.leftMs || 0 : s.rightMs || 0;
+    return base + (s.side === sideKey ? now - s.sideStart : 0);
+  }
+
+  function nurseTotals(s, now) {
+    const leftMs = nurseSideMs(s, 'L', now);
+    const rightMs = nurseSideMs(s, 'R', now);
+    return { leftMs, rightMs, totalMs: leftMs + rightMs };
+  }
+
+  // Folds the running segment (if any) into the accumulators and pauses.
+  function nursePause(s, now) {
+    const next = { ...s };
+    if (s.side === 'L') next.leftMs = (s.leftMs || 0) + (now - s.sideStart);
+    if (s.side === 'R') next.rightMs = (s.rightMs || 0) + (now - s.sideStart);
+    next.side = null;
+    next.sideStart = null;
+    return next;
+  }
+
+  function nurseCard(session, recent) {
+    if (!session) {
+      const box = el('div', {});
+      const lastNurse = recent.filter((e) => e.type === 'nurse').sort((a, b) => b.start - a.start)[0];
+      const suggest = lastNurse ? (lastNurse.side === 'L' ? 'R' : 'L') : null;
+      const start = (side) => async () => {
+        const now = Date.now();
+        await Store.setSetting('activeNurse', { start: now, side, sideStart: now, leftMs: 0, rightMs: 0, lastSide: side });
+        renderApp();
+      };
+      box.appendChild(
+        el('div', { class: 'baby-grid' }, [
+          el('button', { class: 'baby-btn' + (suggest === 'L' ? ' suggest' : ''), text: 'Nurse \u00b7 Left', onClick: start('L') }),
+          el('button', { class: 'baby-btn' + (suggest === 'R' ? ' suggest' : ''), text: 'Nurse \u00b7 Right', onClick: start('R') }),
+        ])
+      );
+      if (lastNurse) {
+        box.appendChild(
+          el('p', { class: 'baby-caption', text: 'Last side: ' + (lastNurse.side === 'L' ? 'left' : 'right') + ' \u00b7 ' + timeAgo(lastNurse.end || lastNurse.start) })
+        );
+      }
+      return box;
+    }
+
+    const box = el('div', { class: 'timer-card' });
+    const leftBtn = el('button', { class: 'nurse-btn' });
+    const rightBtn = el('button', { class: 'nurse-btn' });
+    const totalLine = el('p', { class: 'timer-sub' });
+    const startLine = el('span', { class: 'start-clock' });
+
+    function refresh() {
+      const t = Date.now();
+      const { leftMs, rightMs, totalMs } = nurseTotals(session, t);
+      leftBtn.textContent = 'Left ' + fmtElapsed(leftMs);
+      rightBtn.textContent = 'Right ' + fmtElapsed(rightMs);
+      leftBtn.classList.toggle('running', session.side === 'L');
+      rightBtn.classList.toggle('running', session.side === 'R');
+      totalLine.textContent = (session.side ? 'Nursing' : 'Paused') + ' \u00b7 total ' + fmtElapsed(totalMs);
+      startLine.textContent = 'Started ' + clockStr(session.start);
+    }
+
+    async function tap(sideKey) {
+      const t = Date.now();
+      if (session.side === sideKey) {
+        session = nursePause(session, t);
+      } else {
+        session = nursePause(session, t);
+        session.side = sideKey;
+        session.sideStart = t;
+        session.lastSide = sideKey;
+      }
+      await Store.setSetting('activeNurse', session);
+      refresh();
+    }
+    leftBtn.addEventListener('click', () => tap('L'));
+    rightBtn.addEventListener('click', () => tap('R'));
+
+    // Adds or removes minutes on the side that is running (or last ran), so the
+    // effect is visible immediately on that side's clock.
+    const adjust = async (deltaMin) => {
+      const ms = deltaMin * 60000;
+      const t = Date.now();
+      const target = session.side || session.lastSide;
+      if (!target) return;
+      if (session.side === target) {
+        session.sideStart = Math.min(session.sideStart - ms, t - 1000);
+      } else {
+        const key = target === 'L' ? 'leftMs' : 'rightMs';
+        session[key] = Math.max(0, (session[key] || 0) + ms);
+      }
+      session.start = Math.min(session.start, t - nurseTotals(session, t).totalMs);
+      await Store.setSetting('activeNurse', session);
+      refresh();
+    };
+
+    box.appendChild(el('p', { class: 'timer-title', text: 'Nursing' }));
+    box.appendChild(el('div', { class: 'baby-grid' }, [leftBtn, rightBtn]));
+    box.appendChild(totalLine);
+    box.appendChild(el('p', { class: 'baby-caption', text: 'Tap the other side to switch \u00b7 tap the running side to pause' }));
+    box.appendChild(
+      el('div', { class: 'adjust-row' }, [
+        el('button', { class: 'adjust-btn', text: '\u22125 min', onClick: () => adjust(-5) }),
+        startLine,
+        el('button', { class: 'adjust-btn', text: '+5 min', onClick: () => adjust(5) }),
+      ])
+    );
+
+    box.appendChild(
+      el('div', { class: 'timer-actions' }, [
+        el('button', {
+          class: 'primary compact',
+          text: 'Save feed',
+          onClick: async () => {
+            const t = Date.now();
+            const fin = nursePause(session, t);
+            const l = fin.leftMs || 0;
+            const r = fin.rightMs || 0;
+            if (l + r < 1000) {
+              await Store.setSetting('activeNurse', null);
+              renderApp();
+              return;
+            }
+            await saveEvent({
+              type: 'nurse',
+              side: fin.lastSide || (r > 0 ? 'R' : 'L'),
+              start: session.start,
+              end: t,
+              leftMs: l > 0 ? l : null,
+              rightMs: r > 0 ? r : null,
+            });
+            await Store.setSetting('activeNurse', null);
+            toast('Feed saved');
+            renderApp();
+          },
+        }),
+        twoTap(
+          el('button', { class: 'ghost-btn compact', text: 'Discard' }),
+          'Discard?',
+          async () => {
+            await Store.setSetting('activeNurse', null);
+            renderApp();
+          }
+        ),
+      ])
+    );
+
+    refresh();
+    trackInterval(setInterval(refresh, 1000));
+    return box;
+  }
+
+  // --- trends ---
+
+  const overlapMs = (a1, a2, b1, b2) => Math.max(0, Math.min(a2, b2) - Math.max(a1, b1));
+
+  function clipToDay(startMs, endMs, dayStart, dayEnd) {
+    const s = Math.max(startMs, dayStart);
+    const e = Math.min(endMs, dayEnd);
+    return e > s ? [s, e] : null;
+  }
+
+  function renderBabyTrends(container) {
+    const wrap = el('div', { class: 'wrap' }, [viewHeader('Trends')]);
+    container.appendChild(wrap);
+
+    const seg = el('div', { class: 'segmented trend-seg' });
+    for (const [key, label] of [['week', 'Week'], ['summary', 'Summary']]) {
+      seg.appendChild(
+        el('button', {
+          class: 'seg-btn' + (state.trendsView === key ? ' active' : ''),
+          text: label,
+          onClick: () => {
+            state.trendsView = key;
+            renderApp();
+          },
+        })
+      );
+    }
+    wrap.appendChild(seg);
+
+    if (state.trendsView === 'summary') renderTrendsSummary(wrap);
+    else renderTrendsWeek(wrap);
+  }
+
+  function renderTrendsWeek(wrap) {
+    const anchorIso = state.trendsAnchor || todayISO();
+    const anchor = new Date(anchorIso + 'T00:00:00');
+    const startDay = addDays(anchor, -6);
+    const rangeStart = startDay.getTime();
+    const rangeEnd = anchor.getTime() + MS_DAY;
+
+    const go = (n) => () => {
+      let next = addDays(anchor, n);
+      const today = midnight(new Date());
+      if (next > today) next = today;
+      state.trendsAnchor = isoDate(next);
+      renderApp();
+    };
+    const label = startDay.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' \u2013 ' + anchor.toLocaleDateString([], { month: 'short', day: 'numeric' });
+    const nextBtn = el('button', { class: 'day-arrow', text: '\u203a', 'aria-label': 'Next week', onClick: go(7) });
+    if (anchorIso === todayISO()) nextBtn.disabled = true;
+    wrap.appendChild(
+      el('div', { class: 'day-nav' }, [
+        el('button', { class: 'day-arrow', text: '\u2039', 'aria-label': 'Previous week', onClick: go(-7) }),
+        el('span', { class: 'day-label', text: label }),
+        nextBtn,
+      ])
+    );
+
+    const card = el('div', { class: 'card' });
+    const canvas = el('canvas', { class: 'chart-canvas week-grid', style: 'height:440px' });
+    card.appendChild(canvas);
+    const legend = el('div', { class: 'legend-row' });
+    for (const [type, name] of [['sleep', 'Sleep'], ['nurse', 'Nurse'], ['bottle', 'Bottle'], ['pump', 'Pump'], ['diaper', 'Diaper'], ['activity', 'Activity'], ['solid', 'Food']]) {
+      legend.appendChild(
+        el('span', { class: 'legend-item' }, [
+          el('span', { class: 'legend-dot', style: 'background:' + EVENT_COLORS[type] }),
+          name,
+        ])
+      );
+    }
+    card.appendChild(legend);
+    wrap.appendChild(card);
+
+    Promise.all([
+      Store.eventsInRange(rangeStart - 36 * HOUR_MS, rangeEnd),
+      Store.getSetting('activeSleep'),
+    ]).then(([rows, activeSleep]) => {
+      const consider = rows.slice();
+      if (activeSleep) consider.push({ type: 'sleep', start: activeSleep.start, end: Date.now() });
+      const days = [];
+      for (let i = 0; i < 7; i++) {
+        const d = addDays(startDay, i);
+        const dayStart = d.getTime();
+        const dayEnd = dayStart + MS_DAY;
+        const blocks = [];
+        const ticks = [];
+        for (const e of consider) {
+          if (e.type === 'sleep' || e.type === 'nurse' || e.type === 'activity') {
+            const endMs = Math.max(e.end || e.start, e.start + 60000);
+            const span = clipToDay(e.start, endMs, dayStart, dayEnd);
+            if (span) blocks.push({ startHr: (span[0] - dayStart) / HOUR_MS, endHr: (span[1] - dayStart) / HOUR_MS, color: EVENT_COLORS[e.type] });
+          } else if (e.start >= dayStart && e.start < dayEnd) {
+            ticks.push({ hr: (e.start - dayStart) / HOUR_MS, color: EVENT_COLORS[e.type] || '#999999' });
+          }
+        }
+        days.push({ label: d.toLocaleDateString([], { weekday: 'short' }), sublabel: String(d.getDate()), blocks, ticks });
+      }
+      requestAnimationFrame(() => drawWeekGrid(canvas, days));
+    });
+  }
+
+  function renderTrendsSummary(wrap) {
+    const rangeSeg = el('div', { class: 'segmented trend-seg' });
+    for (const [n, label] of [[7, '7 days'], [30, '30 days']]) {
+      rangeSeg.appendChild(
+        el('button', {
+          class: 'seg-btn' + (state.trendsRange === n ? ' active' : ''),
+          text: label,
+          onClick: () => {
+            state.trendsRange = n;
+            renderApp();
+          },
+        })
+      );
+    }
+    wrap.appendChild(rangeSeg);
+
+    const nDays = state.trendsRange;
+    const endDay = midnight(new Date());
+    const startDay = addDays(endDay, -(nDays - 1));
+    const rangeStart = startDay.getTime();
+
+    const body = el('div', {});
+    wrap.appendChild(body);
+
+    Promise.all([
+      Store.eventsInRange(rangeStart - 36 * HOUR_MS, Date.now() + 60000),
+      Store.getSetting('activeSleep'),
+    ]).then(([rows, activeSleep]) => {
+      const consider = rows.slice();
+      if (activeSleep) consider.push({ type: 'sleep', start: activeSleep.start, end: Date.now() });
+      const per = [];
+      for (let i = 0; i < nDays; i++) {
+        const d = addDays(startDay, i);
+        const dayStart = d.getTime();
+        const dayEnd = dayStart + MS_DAY;
+        const agg = { day: d, night: 0, nap: 0, feeds: 0, nurseMs: 0, bottleMl: 0, breastMl: 0, formulaMl: 0, pumpMl: 0, wet: 0, dirty: 0, act: {} };
+        for (const e of consider) {
+          if (e.type === 'sleep') {
+            const span = clipToDay(e.start, e.end || e.start, dayStart, dayEnd);
+            if (span) {
+              const night =
+                overlapMs(span[0], span[1], dayStart, dayStart + 7 * HOUR_MS) +
+                overlapMs(span[0], span[1], dayStart + 19 * HOUR_MS, dayEnd);
+              agg.night += night;
+              agg.nap += span[1] - span[0] - night;
+            }
+            continue;
+          }
+          if (e.start < dayStart || e.start >= dayEnd) continue;
+          if (e.type === 'nurse') {
+            agg.feeds += 1;
+            agg.nurseMs += (e.leftMs || 0) + (e.rightMs || 0) || (e.end ? e.end - e.start : 0);
+          } else if (e.type === 'bottle') {
+            agg.feeds += 1;
+            agg.bottleMl += e.amountMl || 0;
+            if (e.kind === 'formula') agg.formulaMl += e.amountMl || 0;
+            else if (e.kind === 'breastmilk') agg.breastMl += e.amountMl || 0;
+          } else if (e.type === 'pump') {
+            agg.pumpMl += e.amountMl || 0;
+          } else if (e.type === 'diaper') {
+            if (e.kind === 'wet' || e.kind === 'both') agg.wet += 1;
+            if (e.kind === 'dirty' || e.kind === 'both') agg.dirty += 1;
+          } else if (e.type === 'activity') {
+            agg.act[e.kind] = (agg.act[e.kind] || 0) + (e.end ? e.end - e.start : 0);
+          }
+        }
+        per.push(agg);
+      }
+      const avg = (f) => per.reduce((s, a) => s + f(a), 0) / per.length;
+
+      const sleepSummary = el('div', { class: 'card' }, [
+        el('h3', { class: 'card-title', text: 'Sleep' }),
+        el('p', { class: 'status-line', text: 'Night avg ' + durShort(avg((a) => a.night)) + ' \u00b7 Naps avg ' + durShort(avg((a) => a.nap)) }),
+        el('p', { class: 'muted small', text: 'Daily total avg ' + durShort(avg((a) => a.night + a.nap)) + ' \u00b7 night counted 7 pm \u2013 7 am' }),
+      ]);
+      const sleepCanvas = el('canvas', { class: 'chart-canvas' });
+      sleepSummary.appendChild(sleepCanvas);
+      body.appendChild(sleepSummary);
+      const groups = per.map((a) => ({
+        label: nDays <= 7 ? a.day.toLocaleDateString([], { weekday: 'short' }) : String(a.day.getDate()),
+        segments: [
+          { value: a.night / HOUR_MS, color: EVENT_COLORS.sleep },
+          { value: a.nap / HOUR_MS, color: '#a9bedd' },
+        ],
+      }));
+      requestAnimationFrame(() => drawStackedBars(sleepCanvas, groups, { formatValue: (v) => Math.round(v) + 'h' }));
+
+      const feedLines = [
+        'Feeds ' + avg((a) => a.feeds).toFixed(1) + '/day \u00b7 nursing ' + durShort(avg((a) => a.nurseMs)) + '/day',
+      ];
+      if (per.some((a) => a.bottleMl > 0)) {
+        feedLines.push('Bottles ' + fmtAmount(avg((a) => a.bottleMl)) + '/day (' + fmtAmount(avg((a) => a.breastMl)) + ' breast milk \u00b7 ' + fmtAmount(avg((a) => a.formulaMl)) + ' formula)');
+      }
+      if (per.some((a) => a.pumpMl > 0)) {
+        feedLines.push('Pumped ' + fmtAmount(avg((a) => a.pumpMl)) + '/day');
+        const net = per.reduce((s, a) => s + a.pumpMl - a.breastMl, 0);
+        feedLines.push('Pumped minus bottle-fed breast milk: ' + (net >= 0 ? '+' : '\u2212') + fmtAmount(Math.abs(net)) + ' over ' + nDays + ' days');
+      }
+      body.appendChild(
+        el('div', { class: 'card' }, [el('h3', { class: 'card-title', text: 'Feeding' })].concat(feedLines.map((t) => el('p', { class: 'status-line', text: t }))))
+      );
+
+      body.appendChild(
+        el('div', { class: 'card' }, [
+          el('h3', { class: 'card-title', text: 'Diapers' }),
+          el('p', { class: 'status-line', text: avg((a) => a.wet + a.dirty).toFixed(1) + '/day (' + avg((a) => a.wet).toFixed(1) + ' wet \u00b7 ' + avg((a) => a.dirty).toFixed(1) + ' dirty)' }),
+        ])
+      );
+
+      const actTotals = {};
+      per.forEach((a) => {
+        Object.entries(a.act).forEach(([k, v]) => {
+          actTotals[k] = (actTotals[k] || 0) + v;
+        });
+      });
+      if (Object.keys(actTotals).length) {
+        const lines = Object.entries(actTotals).map(([k, v]) =>
+          el('p', { class: 'status-line', text: (ACTIVITY_LABELS[k] || k) + ' \u00b7 ' + durShort(v / nDays) + '/day' })
+        );
+        body.appendChild(el('div', { class: 'card' }, [el('h3', { class: 'card-title', text: 'Activities' })].concat(lines)));
+      }
+
+      body.appendChild(
+        el('div', { class: 'card' }, [
+          el('h3', { class: 'card-title', text: 'Growth' }),
+          el('button', {
+            class: 'secondary compact',
+            text: 'Open growth charts',
+            onClick: () => {
+              state.view = 'growth';
+              renderApp();
+            },
+          }),
+        ])
+      );
+    });
+  }
+
+  // --- foods (first tastes) ---
+
+  const COMMON_FOODS = [
+    'Oat cereal', 'Rice cereal', 'Banana', 'Avocado', 'Sweet potato', 'Butternut squash',
+    'Apple', 'Pear', 'Peach', 'Carrot', 'Peas', 'Green beans', 'Broccoli', 'Zucchini',
+    'Pumpkin', 'Prune', 'Mango', 'Blueberry', 'Strawberry', 'Egg', 'Peanut butter (thinned)',
+    'Yogurt', 'Cheese', 'Chicken', 'Turkey', 'Beef', 'Salmon', 'White fish', 'Lentils',
+    'Black beans', 'Tofu', 'Bread', 'Pasta', 'Oatmeal', 'Watermelon', 'Cucumber',
+  ];
+
+  function renderBabyFoods(container) {
+    const backHeader = el('header', { class: 'app-header tool-header' }, [
+      el('button', {
+        class: 'back-btn',
+        text: '\u2039 Back',
+        onClick: () => {
+          state.view = 'home';
+          renderApp();
+        },
+      }),
+      el('h1', { class: 'app-title', text: 'Foods' }),
+    ]);
+    const wrap = el('div', { class: 'wrap' }, [backHeader]);
+    container.appendChild(wrap);
+
+    Store.eventsInRange(0, Date.now() + 60000).then((rows) => {
+      const solids = rows.filter((e) => e.type === 'solid' && e.kind);
+      const tried = new Map();
+      for (const e of solids) {
+        const key = e.kind.trim().toLowerCase();
+        if (!tried.has(key) || e.start < tried.get(key).start) tried.set(key, e);
+      }
+      const has = (name) => tried.has(name.trim().toLowerCase());
+
+      async function addFoods(names) {
+        const fresh = [];
+        for (const raw of names) {
+          const name = raw.trim();
+          if (!name || has(name) || fresh.some((f) => f.toLowerCase() === name.toLowerCase())) continue;
+          fresh.push(name);
+        }
+        if (!fresh.length) {
+          toast('Already on the list');
+          return;
+        }
+        for (const name of fresh) {
+          await saveEvent({ type: 'solid', kind: name, start: Date.now(), end: null });
+        }
+        toast(fresh.length === 1 ? fresh[0] + ' added' : fresh.length + ' foods added');
+        renderApp();
+      }
+
+      const input = el('input', { type: 'text', placeholder: 'banana, avocado, oatmeal', autocomplete: 'off' });
+      wrap.appendChild(
+        el('div', { class: 'card' }, [
+          el('h3', { class: 'card-title', text: 'Add a first taste' }),
+          el('p', { class: 'muted small', text: 'One food, or several separated by commas.' }),
+          input,
+          el('div', { class: 'panel-actions' }, [
+            el('button', { class: 'primary compact', text: 'Add', onClick: () => addFoods((input.value || '').split(',')) }),
+          ]),
+          el('p', { class: 'muted small', text: 'Tip: introduce one new food at a time, a few days apart, so any reaction is easy to trace.' }),
+        ])
+      );
+
+      const remaining = COMMON_FOODS.filter((f) => !has(f));
+      if (remaining.length) {
+        const chips = el('div', { class: 'food-chips' });
+        for (const f of remaining) {
+          chips.appendChild(el('button', { class: 'chip', text: f, onClick: () => addFoods([f]) }));
+        }
+        wrap.appendChild(el('div', { class: 'card' }, [el('h3', { class: 'card-title', text: 'Common first foods' }), chips]));
+      }
+
+      const listCard = el('div', { class: 'card' }, [el('h3', { class: 'card-title', text: 'Tried (' + tried.size + ')' })]);
+      wrap.appendChild(listCard);
+      if (!tried.size) {
+        listCard.appendChild(el('p', { class: 'muted small', text: 'Nothing yet \u2014 this list grows with every first taste.' }));
+        return;
+      }
+      const sorted = [...tried.values()].sort((a, b) => b.start - a.start);
+      for (const e of sorted) {
+        const main = el('div', { class: 'evt-main' }, [
+          el('span', { class: 'evt-time', text: prettyDate(new Date(e.start)) }),
+          el('span', { class: 'evt-desc', text: e.kind }),
+        ]);
+        listCard.appendChild(
+          el('div', { class: 'evt-row' }, [
+            el('span', { class: 'evt-dot dot-solid' }),
+            main,
+            twoTap(
+              el('button', { class: 'evt-del', text: '\u00d7', 'aria-label': 'Remove food' }),
+              'Delete?',
+              async () => {
+                await Store.deleteEvent(e.id);
                 renderApp();
               }
             ),

@@ -245,3 +245,63 @@ function roundRectPath(ctx, x, y, w, h, r) {
   ctx.arcTo(x, y, x + w, y, rr);
   ctx.closePath();
 }
+
+// days: [{ label, sublabel, blocks: [{ startHr, endHr, color }], ticks: [{ hr, color }] }]
+// Draws a week calendar: one column per day, midnight-to-midnight hour axis,
+// duration events as rounded blocks and instant events as thin bars.
+function drawWeekGrid(canvas, days, opts = {}) {
+  const textColor = getComputedStyle(canvas).color || '#766c7b';
+  const gridColor = 'rgba(150,140,150,0.22)';
+
+  const dpr = window.devicePixelRatio || 1;
+  const cssW = canvas.clientWidth || 320;
+  const cssH = canvas.clientHeight || 420;
+  canvas.width = cssW * dpr;
+  canvas.height = cssH * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  ctx.clearRect(0, 0, cssW, cssH);
+  if (!days.length) return;
+
+  const padL = 34, padR = 6, padT = 30, padB = 8;
+  const w = cssW - padL - padR;
+  const h = cssH - padT - padB;
+  const colW = w / days.length;
+  const y = (hr) => padT + (hr / 24) * h;
+
+  ctx.font = '10px -apple-system, system-ui, sans-serif';
+  ctx.lineWidth = 1;
+  for (let hr = 0; hr <= 24; hr += 3) {
+    const yy = y(hr);
+    ctx.strokeStyle = gridColor;
+    ctx.beginPath();
+    ctx.moveTo(padL, yy);
+    ctx.lineTo(cssW - padR, yy);
+    ctx.stroke();
+    const label = hr % 24 === 0 ? '12a' : hr === 12 ? '12p' : hr < 12 ? hr + 'a' : hr - 12 + 'p';
+    ctx.fillStyle = textColor;
+    ctx.fillText(label, 4, yy + 3);
+  }
+
+  days.forEach((day, i) => {
+    const x0 = padL + i * colW;
+    const bw = Math.max(10, colW - 8);
+    const bx = x0 + (colW - bw) / 2;
+    ctx.fillStyle = textColor;
+    ctx.textAlign = 'center';
+    ctx.fillText(day.label, x0 + colW / 2, 11);
+    if (day.sublabel) ctx.fillText(day.sublabel, x0 + colW / 2, 23);
+    ctx.textAlign = 'left';
+    for (const b of day.blocks || []) {
+      const top = y(Math.max(0, b.startHr));
+      const bottom = y(Math.min(24, b.endHr));
+      ctx.fillStyle = b.color;
+      roundRectPath(ctx, bx, top, bw, Math.max(2.5, bottom - top), 3);
+      ctx.fill();
+    }
+    for (const t of day.ticks || []) {
+      ctx.fillStyle = t.color;
+      ctx.fillRect(bx, y(t.hr) - 1.25, bw, 2.5);
+    }
+  });
+}
